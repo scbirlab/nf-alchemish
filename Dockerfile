@@ -2,7 +2,7 @@ FROM mambaorg/micromamba:1.5.6
 
 ENV HOME=/home/micromamba
 WORKDIR /home/micromamba
-RUN mkdir -p $HOME
+RUN mkdir -p $HOME/.conda
 ENV MAMBA_ROOT_PREFIX=/opt/conda
 
 USER root
