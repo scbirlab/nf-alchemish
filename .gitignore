@@ -1,0 +1,6 @@
+.nextflow*
+work/*
+/test/*/outputs/
+/test/*/*.log
+/test/*/*.html
+/src/
