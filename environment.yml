@@ -1,0 +1,12 @@
+name: nf-alchemish
+
+channels:
+    - conda-forge
+
+dependencies:
+    - python==3.12
+    - pip
+    - conda-forge::duckdb-cli
+    - conda-forge::jq
+    - pip:
+        - "-e /nemo/lab/johnsone/home/users/johnsoe/github/duvida[chem,splits,transformers]"
