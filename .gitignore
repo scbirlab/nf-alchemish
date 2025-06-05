@@ -1,4 +1,7 @@
 .nextflow*
+/.singularity/
+/.conda/
+/.docker/
 work/*
 /test/*/outputs/
 /test/*/*.log

@@ -10,4 +10,4 @@ dependencies:
     - conda-forge::git
     - conda-forge::jq
     - pip:
-        - "-e git+https://github.com/scbirlab/duvida.git@chem-splitting#egg=duvida[chem,splits,transformers]"
+        - "git+https://github.com/scbirlab/duvida.git@chem-splitting#egg=duvida[chem,splits,transformers]"
