@@ -28,4 +28,4 @@ jobs:
     - uses: nf-core/setup-nextflow@v1
     - name: Test Nextflow pipeline
       run: |
-        bash test/run-tests.sh
+        bash test/run-tests.sh gh

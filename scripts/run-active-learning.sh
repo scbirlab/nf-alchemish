@@ -15,9 +15,9 @@ output_dir=${2:-"."}
 slurm=${3:-"no"}
 github=${4:-"no"}
 
-script_dir=/nemo/lab/johnsone/home/users/johnsoe/github/nf-alchemish/scripts #$(readlink -f $(dirname "$0"))
 outputs="$output_dir/outputs"
 
+script_dir=/nemo/lab/johnsone/home/users/johnsoe/github/nf-alchemish/scripts # TODO: fix this hardcoding
 if [ "$slurm" == "slurm" ]
 then
     inner_runner="sbatch -o nf-alchemish-inner.log"
@@ -27,12 +27,11 @@ else
     if [ "$github" == "gh" ]
     then
         profile=gh
+        script_dir=$(readlink -f $(dirname "$0"))
     else
         profile=local
     fi
 fi
-
-
 
 nextflow run "$script_dir"/.. \
     --workflow init \
