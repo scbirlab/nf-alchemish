@@ -1,0 +1,14 @@
+{
+    "class_name": "fingerprint",
+    "dropout": 0.0,
+    "ensemble_size": 10,
+    "learning_rate": 1e-05,
+    "n_hidden": 5,
+    "n_units": 16,
+    "residual_depth": 2,
+    "extra_featurizers": [
+        "transformer://scbirlab/lchemme-base-zinc22-lteq300:clean_smiles~mean"
+    ],
+    "use_2d": true,
+    "use_fp": true
+}
