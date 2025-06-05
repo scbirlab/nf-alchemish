@@ -9,4 +9,4 @@ dependencies:
     - conda-forge::duckdb-cli
     - conda-forge::jq
     - pip:
-        - "-e /nemo/lab/johnsone/home/users/johnsoe/github/duvida[chem,splits,transformers]"
+        - "-e git+https://github.com/scbirlab/duvida.git@chem-splitting#egg=project[chem,splits,transformers]"
