@@ -1,5 +1,10 @@
 FROM mambaorg/micromamba:1.5.6
 
+ENV HOME=/home/micromamba
+WORKDIR /home/micromamba
+RUN mkdir -p $HOME
+ENV MAMBA_ROOT_PREFIX=/opt/conda
+
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
