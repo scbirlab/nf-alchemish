@@ -2,8 +2,9 @@
 /.singularity/
 /.conda/
 /.docker/
-work/*
+work/
 /test/*/outputs/
 /test/*/*.log
 /test/*/*.html
+/test/*/work/
 /src/
