@@ -175,11 +175,7 @@ workflow init {
     .splitCsv( header: true )
     .map { [ 
       it.id, 
-      (
-        (it.dataset.startsWith("hf:") || it.dataset.startsWith("https:")) 
-        ? it.dataset 
-        : file( it.dataset, checkIfExists: true )
-      ), 
+      it.dataset, 
       it.structure, 
       it.split, 
       it.target,
@@ -187,18 +183,27 @@ workflow init {
     .unique()
     .set { csv_rows }  // id, dataset, structure, split method, target
 
-  csv_rows
+  csv_rows.remote
     .map { it[0..-2] }  // id, dataset, structure, split method
     .combine( split_replicates )
+    .branch { v ->
+      remote: (it[1].startsWith("hf:") || it[1].startsWith("https:"))
+      local: true
+    }
     .set { data_ch }  // id, dataset, structure, split method, split_rep
 
   // Workflow
-  split_data( 
-    data_ch,
+  split_data_local( 
+    data_ch.local.map { tuple( it[0], file(it[1], checkIfExists: true), it[2], it[3] ) },
+    split_fracs,
+  )  // id, split_rep, [pool, val, test]
+  split_data_remote( 
+    data_ch.remote,
     split_fracs,
   )  // id, split_rep, [pool, val, test]
 
-  split_data.out.data
+  split_data_local.out.data
+    .concatenate( split_data_remote.out.data )
     .combine( init_replicates )  // id, split_rep, [pool, val, test], init_rep
     .map { [ [id: it[0], split_rep: it[1], init_rep: it[3]], [pool: it[2][1], validation: it[2][2], test: it[2][0] ] ] }
     .set { split_data_out }  // [id, split_rep, init_rep], [pool, val, test]
