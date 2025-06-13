@@ -204,7 +204,7 @@ workflow init {
   )  // id, split_rep, [pool, val, test]
 
   split_data_local.out.data
-    .concatenate( split_data_remote.out.data )
+    .concat( split_data_remote.out.data )
     .combine( init_replicates )  // id, split_rep, [pool, val, test], init_rep
     .map { [ [id: it[0], split_rep: it[1], init_rep: it[3]], [pool: it[2][1], validation: it[2][2], test: it[2][0] ] ] }
     .set { split_data_out }  // [id, split_rep, init_rep], [pool, val, test]
