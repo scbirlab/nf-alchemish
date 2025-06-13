@@ -184,7 +184,7 @@ workflow init {
     .unique()
     .set { csv_rows }  // id, dataset, structure, split method, target
 
-  csv_rows.remote
+  csv_rows
     .map { it[0..-2] }  // id, dataset, structure, split method
     .combine( split_replicates )
     .branch { v ->
