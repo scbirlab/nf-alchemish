@@ -195,7 +195,7 @@ workflow init {
 
   // Workflow
   split_data_local( 
-    data_ch.local.map { tuple( it[0], file(it[1], checkIfExists: true), it[2], it[3] ) },
+    data_ch.local.map { [ it[0], file(it[1], checkIfExists: true) ] + it[2..-1] },
     split_fracs,
   )  // id, split_rep, [pool, val, test]
   split_data_remote( 
