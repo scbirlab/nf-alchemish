@@ -173,7 +173,17 @@ workflow init {
   main:
   sample_sheet
     .splitCsv( header: true )
-    .map { [ it.id, it.dataset, it.structure, it.split, it.target ] }
+    .map { [ 
+      it.id, 
+      (
+        (it.dataset.startsWith("hf:") || it.dataset.startsWith("https:")) 
+        ? it.dataset 
+        : file( it.dataset, checkIfExists: true )
+      ), 
+      it.structure, 
+      it.split, 
+      it.target,
+     ] }
     .unique()
     .set { csv_rows }  // id, dataset, structure, split method, target
 
