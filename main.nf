@@ -87,7 +87,8 @@ include {
   acquire; 
 } from './modules/batches.nf'
 include { 
-  split_data; 
+  split_data_local;
+  split_data_remote;
 } from './modules/data-prep.nf'
 include { 
   get_chunk_indices; 
