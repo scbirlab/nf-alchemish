@@ -17,7 +17,17 @@ github=${4:-"no"}
 
 outputs="$output_dir/outputs"
 
-script_dir=/nemo/lab/johnsone/home/users/johnsoe/github/nf-alchemish/scripts # TODO: fix this hardcoding
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+
+# resolve symlinks
+while [ -h "$SCRIPT_PATH" ]; do
+  DIR="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
+  SCRIPT_PATH="$( readlink "$SCRIPT_PATH" )"
+  [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$DIR/$SCRIPT_PATH"
+done
+
+# absolute directory
+script_dir="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
 if [ "$slurm" == "slurm" ]
 then
     inner_runner="sbatch -o nf-alchemish-inner.log"
