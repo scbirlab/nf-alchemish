@@ -1,2 +1,3 @@
 id,dataset,structure,split,target
-1,hf://scbirlab/thomas-2018-spark-wt@Escherichia-coli:train,smiles,scaffold,pmic
+1,inputs/e-coli-training-data-sample.csv,smiles,scaffold,pmic
+1,inputs/e-coli-training-data-sample.csv,smiles,faiss,pmic
