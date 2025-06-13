@@ -188,7 +188,7 @@ workflow init {
     .map { it[0..-2] }  // id, dataset, structure, split method
     .combine( split_replicates )
     .branch { v ->
-      remote: (it[1].startsWith("hf:") || it[1].startsWith("https:"))
+      remote: (v[1].startsWith("hf:") || v[1].startsWith("https:"))
       local: true
     }
     .set { data_ch }  // id, dataset, structure, split method, split_rep
