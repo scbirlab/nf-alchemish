@@ -60,6 +60,7 @@ log.info pipeline_title + """\
     split reps     : ${params.split_replicates}
     init. reps     : ${params.init_replicates}
     acquisition    : ${params.acquisition}
+    invert acq.    : ${params.invert}
   data
     structure      : ${params.structure}
     target         : ${params.target}
@@ -118,6 +119,7 @@ workflow {
         val: params.validation, 
         test: params.test,
       ] ),
+      Channel.value( params.k ),
       Channel.value( params.init_batch_size ),
       Channel.of( 1..params.split_replicates ),
       Channel.of( 1..params.init_replicates ),
@@ -164,6 +166,7 @@ workflow init {
   take:
   sample_sheet
   split_fracs
+  knn
   init_batch_size
   split_replicates
   init_replicates
@@ -197,16 +200,21 @@ workflow init {
   split_data_local( 
     data_ch.local.map { [ it[0], file(it[1], checkIfExists: true) ] + it[2..-1] },
     split_fracs,
+    knn,
   )  // id, split_rep, [pool, val, test]
   split_data_remote( 
     data_ch.remote,
     split_fracs,
+    knn,
   )  // id, split_rep, [pool, val, test]
 
   split_data_local.out.data
     .concat( split_data_remote.out.data )
     .combine( init_replicates )  // id, split_rep, [pool, val, test], init_rep
-    .map { [ [id: it[0], split_rep: it[1], init_rep: it[3]], [pool: it[2][1], validation: it[2][2], test: it[2][0] ] ] }
+    .map { [ 
+      [id: it[0], split_rep: it[1], init_rep: it[3]], 
+      [pool: it[2][1], validation: it[2][2], test: it[2][0] ] 
+    ] }
     .set { split_data_out }  // [id, split_rep, init_rep], [pool, val, test]
   
   take_first_batch(

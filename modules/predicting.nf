@@ -5,7 +5,7 @@ process predict {
     label "gpu_single"
 
     errorStrategy 'retry'  // sometimes GPU fails
-    maxRetries 1
+    maxRetries 3
 
     publishDir "${params.outputs}", mode: 'copy', pattern: "prediction.{png,csv}"
 
@@ -22,7 +22,7 @@ process predict {
     script:
     def acq_flag = ( acq == "doubtscore" ? "--doubtscore" : ( acq == "information sensitivity" ? "--information-sensitivity" : ""))
     """
-    duvida predict \
+    HF_HOME=cache duvida predict \
         --test "${pool}" \
         -S "${xy.structure}" ${acq_flag} \
         --extras rowid \

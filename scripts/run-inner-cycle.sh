@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=16G
-#SBATCH --time=5-0:00:00
+#SBATCH --time=7-0:00:00
 
 set -ex
 

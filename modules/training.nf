@@ -4,8 +4,8 @@ process train_initial_model {
     tag "${id}:${xy.target}"
     label "gpu_single"
 
-    errorStrategy 'retry'  // sometimes GPU fails
-    maxRetries 1
+    // errorStrategy 'retry'  // sometimes GPU fails
+    // maxRetries 3
 
     publishDir "${params.outputs}/${id.id}/split-${id.split_rep}/sample-${id.init_rep}/cycle-0", mode: 'copy', pattern: "*.dv"
 
@@ -30,7 +30,7 @@ process train_initial_model {
     ) TO "train.csv" (FORMAT CSV);
     '
 
-    duvida train \
+    HF_HOME=cache duvida train \
         -1 "train.csv" \
         -2 "${data_splits[1]}" \
         --test "${data_splits[2]}" \
@@ -84,7 +84,7 @@ process train {
         exit 1
     fi
 
-    duvida train \
+    HF_HOME=cache duvida train \
         -1 "train.csv" \
         -2 "${validation}" \
         --test ${test} \

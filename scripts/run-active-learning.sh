@@ -17,7 +17,19 @@ github=${4:-"no"}
 
 outputs="$output_dir/outputs"
 
+MAX_BATCH_SIZE=100  # prevent slurm swamping
 SCRIPT_PATH="${BASH_SOURCE[0]}"
+
+all_jobs=()
+batch_jobs=()
+
+submit_batch() {
+    local jobids=$(IFS=:; echo "${batch_jobs[*]}")
+    all_jobs+=("${batch_jobs[@]}")
+    batch_jobs=()
+
+    echo "Submitted batch: $jobids"
+}
 
 # resolve symlinks
 while [ -h "$SCRIPT_PATH" ]; do
@@ -66,11 +78,6 @@ do
                 if [[ $(basename "$acq") != "cycle-"* ]]
                 then
                     echo "acq = $acq"
-                    if [ ! -e "$acq"/work ]
-                    then
-                        mkdir -p "$acq"/work
-                    fi
-                    ln -sf "$(readlink -f "$start_dir"/work/conda)" "$acq"/work/conda
                     cd "$acq"
                     $inner_runner \
                         "$script_dir"/run-inner-cycle.sh \

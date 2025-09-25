@@ -8,6 +8,7 @@ process split_data_remote {
     input:
     tuple val( id ), val( dataset ), val( structure ), val( split_method ), val( split_rep )
     val split_p
+    val knn
 
     // id, split_rep, [pool, val, test]
     output:
@@ -16,14 +17,14 @@ process split_data_remote {
 
     script:
     """
-    duvida split \
+    HF_HOME=cache duvida split \
         "${dataset}" \
         --train "${split_p.pool}" \
         --validation "${split_p.val}" \
         --test "${split_p.test}" \
         --structure "${structure}" \
         --type "${split_method}" \
-        -k 5 \
+        -k ${knn} \
         --seed "${split_rep}" \
         --cache cache \
         --output split.parquet \
@@ -55,6 +56,7 @@ process split_data_local {
     input:
     tuple val( id ), path( dataset ), val( structure ), val( split_method ), val( split_rep )
     val split_p
+    val knn
 
     // id, split_rep, [pool, val, test]
     output:
@@ -63,14 +65,14 @@ process split_data_local {
 
     script:
     """
-    duvida split \
+    HF_HOME=cache duvida split \
         "${dataset}" \
         --train "${split_p.pool}" \
         --validation "${split_p.val}" \
         --test "${split_p.test}" \
         --structure "${structure}" \
         --type "${split_method}" \
-        -k 5 \
+        -k ${knn} \
         --seed "${split_rep}" \
         --cache cache \
         --output split.parquet \
