@@ -4,10 +4,11 @@ channels:
     - conda-forge
 
 dependencies:
-    - python==3.12
+    - python==3.13
     - pip
     - conda-forge::duckdb-cli
     - conda-forge::git
     - conda-forge::jq
     - pip:
-        - "git+https://github.com/scbirlab/duvida.git@chem-splitting#egg=duvida[chem,splits,transformers]"
+        - "duvidnn>=0.0.1"
+        - "eluent>=0.0.2"
