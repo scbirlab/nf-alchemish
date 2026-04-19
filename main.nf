@@ -88,8 +88,8 @@ include {
   acquire; 
 } from './modules/batches.nf'
 include { 
-  split_data_local;
   split_data_remote;
+  split_data_remote as split_data_local;
 } from './modules/data-prep.nf'
 include { 
   get_chunk_indices; 
@@ -121,7 +121,7 @@ workflow {
       ] ),
       Channel.value( params.k ),
       Channel.value( params.init_batch_size ),
-      Channel.of( 1..params.split_replicates ),
+      Channel.of( params.split_replicates ),
       Channel.of( 1..params.init_replicates ),
       Channel.fromList( params.acquisitions ),
       Channel.value( file( params.model_config, checkIfExists: true ) ),
@@ -191,7 +191,7 @@ workflow init {
     .map { it[0..-2] }  // id, dataset, structure, split method
     .combine( split_replicates )
     .branch { v ->
-      remote: (v[1].startsWith("hf:") || v[1].startsWith("https:"))
+      remote: (v[1].startsWith("hf://") || v[1].startsWith("https://"))
       local: true
     }
     .set { data_ch }  // id, dataset, structure, split method, split_rep
@@ -201,24 +201,27 @@ workflow init {
     data_ch.local.map { [ it[0], file(it[1], checkIfExists: true) ] + it[2..-1] },
     split_fracs,
     knn,
-  )  // id, split_rep, [pool, val, test]
+  )  // id, split_method, [pool, val, test]
   split_data_remote( 
     data_ch.remote,
     split_fracs,
     knn,
-  )  // id, split_rep, [pool, val, test]
+  )  // id, split_method, [pool, val, test]
 
   split_data_local.out.data
-    .concat( split_data_remote.out.data )
-    .combine( init_replicates )  // id, split_rep, [pool, val, test], init_rep
-    .map { [ 
-      [id: it[0], split_rep: it[1], init_rep: it[3]], 
-      [pool: it[2][1], validation: it[2][2], test: it[2][0] ] 
+    // .concat( split_data_remote.out.data )
+    .transpose()
+    .map { v -> tuple(v[0], v[1], v[2].parent.parent.name, v[2])}
+    .groupTuple( by: [0,1,2] )
+    .combine( init_replicates )  // id, split_rep, split_method, [pool, val, test], init_rep
+    .map { v -> [ 
+      [id: v[0], split_rep: v[2], split_method: v[1], init_rep: v[-1]], 
+      [pool: v[3][1], validation: v[3][2], test: v[3][0] ] 
     ] }
-    .set { split_data_out }  // [id, split_rep, init_rep], [pool, val, test]
+    .set { split_data_out }  // [id, split_rep, split_method, init_rep], [pool, val, test]
   
   take_first_batch(
-    split_data_out.map { [ it[0], it[1].pool ] },
+    split_data_out.map { v -> [ v[0], v[1].pool ] },
     init_batch_size,
   )  // [id, split_rep, init_rep], labelled_idx
   
@@ -230,7 +233,7 @@ workflow init {
     .map { [ it[0].id ] + it }
     .combine(
       csv_rows.map { tuple( it[0], [structure: it[2], target: it[4]] ) },
-      by: 0
+      by: 0,
     )  // [id, split_rep, init_rep], [pool, val, test], labelled_idx, [structure, target]
     .map { [ it[1], it[-1] ] + it[2..-2]  }  // [id, split_rep, init_rep], [structure, target], [pool, val, test], labelled_idx
     .set { init_data }

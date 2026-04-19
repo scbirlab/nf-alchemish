@@ -22,7 +22,7 @@ process predict {
     script:
     def acq_flag = ( acq == "doubtscore" ? "--doubtscore" : ( acq == "information sensitivity" ? "--information-sensitivity" : ""))
     """
-    HF_HOME=cache duvida predict \
+    HF_HOME=cache duvidnn predict \
         --test "${pool}" \
         -S "${xy.structure}" ${acq_flag} \
         --extras rowid \

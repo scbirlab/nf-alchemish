@@ -30,7 +30,7 @@ process train_initial_model {
     ) TO "train.csv" (FORMAT CSV);
     '
 
-    HF_HOME=cache duvida train \
+    HF_HOME=cache duvidnn train \
         -1 "train.csv" \
         -2 "${data_splits[1]}" \
         --test "${data_splits[2]}" \
@@ -84,7 +84,7 @@ process train {
         exit 1
     fi
 
-    HF_HOME=cache duvida train \
+    HF_HOME=cache duvidnn train \
         -1 "train.csv" \
         -2 "${validation}" \
         --test ${test} \

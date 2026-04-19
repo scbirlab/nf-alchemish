@@ -10,5 +10,5 @@ dependencies:
     - conda-forge::git
     - conda-forge::jq
     - pip:
-        - "duvidnn>=0.0.1"
+        - "duvidnn[torch,chem]>=0.0.1"
         - "eluent>=0.0.2.post1"

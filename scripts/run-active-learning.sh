@@ -59,6 +59,7 @@ nextflow run "$script_dir"/.. \
     --workflow init \
     --outputs "$outputs" \
     -profile "$profile" \
+    -with-dag init.html \
     -resume
 
 n_cycles=1
