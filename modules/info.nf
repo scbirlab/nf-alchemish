@@ -25,7 +25,7 @@ process write_init_info {
         "structure": "${xy.structure}", 
         "target": "${xy.target}", 
         "acquisition_fn": "${acq}",
-        "sample_size": "${batch_size}",
+        "sample_size": ${batch_size},
         "model_config": "${model_config}",
         "epochs": ${epochs}
     }' > info.json

@@ -37,7 +37,7 @@ split_rep=$(jq -r '.split_rep' < "$info_file")
 structure=$(jq -r '.structure' < "$info_file")
 target=$(jq -r '.target' < "$info_file")
 acq=$(jq -r '.acquisition_fn' < "$info_file")
-batch_size=$(jq -r '.batch_size' < "$info_file")
+batch_size=$(jq -r '.sample_size' < "$info_file")
 epochs=$(jq -r '.epochs' < "$info_file")
 model_config=$(jq -r '.model_config' < "$info_file")
 

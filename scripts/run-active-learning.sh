@@ -119,15 +119,16 @@ then
     sbatch --array=0-$(( ${#job_scripts[@]} - 1 ))%$MAX_PARALLEL \
         --job-name=nf-inner \
         -o nf-inner-%a.log \
-        --wrap='bash $(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" '"${job_list_abs}"')'
+        --wrap="bash \$(sed -n \"\$((SLURM_ARRAY_TASK_ID + 1))p\" ${job_list_abs})"
+    for i in $(seq 0 $(( ${#job_scripts[@]} - 1 ))); do
+        echo "$(pwd)/nf-inner-${i}.log"
+    done > logfiles.txt
 else
     for j in "${job_scripts[@]}"
     do
-        run_with_limit "$j"
+        run_with_limit "$j" nf-inner-"$1.log" 2>&1 &
+        echo "$(pwd)/nf-inner-$1.log" >> logfiles.txt
     done
     wait  # block until all finish
 fi
-for i in $(seq 0 $(( ${#job_scripts[@]} - 1 ))); do
-    echo "$(pwd)/nf-inner-${i}.log"
-done > logfiles.txt
 echo 'tail -f $(cat "logfiles.txt")' > "log-follow.sh"
