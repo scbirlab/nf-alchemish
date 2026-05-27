@@ -26,6 +26,8 @@ jobs:
         channels: conda-forge,bioconda,defaults 
         channel-priority: true
     - uses: nf-core/setup-nextflow@v1
+      with:
+        version: 25
     - name: Test Nextflow pipeline
       run: |
         set -x
