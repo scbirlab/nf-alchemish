@@ -7,5 +7,6 @@
     "n_units": 16,
     "residual_depth": 2,
     "use_2d": true,
+    "use_3d": true,
     "use_fp": true
 }
