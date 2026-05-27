@@ -4,25 +4,31 @@ process take_first_batch {
     tag "${id}"
     cpus 1
 
-    publishDir "${params.outputs}/${id.id}/split-${id.split_rep}/sample-${id.init_rep}/cycle-0", mode: 'copy'
+    publishDir(
+        "${params.outputs}", 
+        mode: 'copy',
+        saveAs: { "${id.id}/runs/method_${id.split_method}/fold_${id.split_rep}/sample_${id.init_rep}/cycle_0/${it}" },
+    )
 
     input:
     tuple val( id ), path( parquet )
     val batch_size
 
     output:
-    tuple val( id ), path( "*.csv" )
+    tuple val( id ), path( "idx_all.csv" )
 
     script:
     """
-    duckdb -c '
+    duckdb -c "
         PRAGMA threads=${task.cpus};
         COPY (
             SELECT rowid
-            FROM read_parquet("${parquet}")
+            FROM read_parquet('${parquet}')
             USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE (42)
-        ) TO "idx_cycle-0.csv" (FORMAT CSV);
-    '
+        ) TO 'idx.csv' (FORMAT CSV);
+    "
+
+    cat "idx.csv" | grep -v '^rowid\$' > "idx_all.csv"
 
     """
 
@@ -39,43 +45,53 @@ process acquire {
 
     input:
     tuple val( id ), path( '*.parquet' ), path( idx )
+    val xy
     val acq
     val batch_size
     val invert
 
     // [id, split_rep, init_rep], [structure, target], acq, new_idx
     output:
-    tuple val( id ), path( "idx_cycle-*.csv" ), emit: new_idx
-    tuple val( id ), path( "idx-all_cycle-*.csv" ), emit: all_idx
+    tuple val( id ), path( "idx_new.csv" ), emit: new_idx
+    tuple val( id ), path( "idx_all.csv" ), emit: all_idx
 
     script:
     def colMap = [
         random: null,
-        variance: '"prediction variance"',
+        variance: 'prediction variance',
+        greedy: "prediction",
         tanimoto: 'tanimoto_nn',
-        'information sensitivity': '"information sensitivity"'
+        'information sensitivity': 'information sensitivity'
     ]
     def col = colMap.get(acq, acq)
     def op = invert ? '*' : '/'
-    """
-    if [ "${acq}" == "random" ]
-    then
-        duckdb -c \"
+    if ( acq == "random" ) {
+
+        """
+        duckdb -c "
             PRAGMA threads=${task.cpus};
             COPY (
                 WITH remaining AS (
                     SELECT rowid
-                    FROM read_parquet('*.parquet\') 
-                    ANTI JOIN read_csv_auto('${idx}')
+                    FROM read_parquet('*.parquet') 
+                    ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
                 SELECT rowid
                 FROM remaining
                 USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE(${id})
-            ) TO 'idx_cycle-${id}.csv' (FORMAT CSV);
-        \"
-    else
-        duckdb -c '
+            ) TO 'idx_new.csv' (FORMAT CSV);
+        "
+
+        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
+        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
+        mv idx_all0.csv idx_all.csv
+
+        """
+    }
+    else {
+        """
+        duckdb -c "
             PRAGMA threads=${task.cpus};
             -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
             -- Returns a pseudorandom fp64 number in the range [0, 1). The number
@@ -86,22 +102,24 @@ process acquire {
             );
             COPY (
                 WITH remaining AS (
-                    SELECT rowid, ${col}
-                    FROM read_parquet('"'*.parquet'"') 
-                    ANTI JOIN read_csv_auto('"'${idx}'"')
+                    SELECT rowid, \\"${col}\\"
+                    FROM read_parquet('*.parquet') 
+                    ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
-                SELECT rowid, ${col}
+                SELECT rowid, \\"${col}\\"
                 FROM remaining
-                WHERE ${col} > 0
-                ORDER BY -LN(1.0 - pseudorandom_uniform('"'${acq}'"', 42, rowid)) ${op} ${col}
+                WHERE \\"${col}\\" > 0
+                ORDER BY -LN(1.0 - pseudorandom_uniform('${acq}', 42, rowid)) ${op} \\"${col}\\"
                 LIMIT ${batch_size}
-            ) TO '"'idx_cycle-${id}.csv'"' (FORMAT CSV);
-        '
-    fi
+            ) TO 'idx_new.csv' (FORMAT CSV);
+        "
 
-    cat "${idx}" <(tail -n+2 "idx_cycle-${id}.csv")  | cut -f1 -d, > "idx-all_cycle-${id}.csv"
+        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
+        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
+        mv idx_all0.csv idx_all.csv
 
-    """
+        """
+    }
 
 }

@@ -40,10 +40,21 @@ done
 
 # absolute directory
 script_dir="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
+script_dir="$(readlink -f "$script_dir")"
 if [ "$slurm" == "slurm" ]
 then
     inner_runner="sbatch -o nf-alchemish-inner.log"
     profile=standard
+    if [ -f "interrupt.sh" ]
+    then
+        rm "interrupt.sh"
+    fi
+
+    for x in inner active
+    do
+        echo "squeue -h --me -o "'"%i %j"'" | awk '\$2 ~ /^nf-$x/ {print \$1}' | xargs scancel" \
+        >> interrupt.sh
+    done
 else
     inner_runner="bash"
     if [ "$github" == "gh" ]
@@ -55,6 +66,9 @@ else
     fi
 fi
 
+echo 'find ~/.cache/duvidnn/0.0.1/parquet -mindepth 1 -maxdepth 1 -type d -mmin +120 -exec rm -rf {} +' \
+> clean-cache.sh
+
 nextflow run "$script_dir"/.. \
     --workflow init \
     --outputs "$outputs" \
@@ -65,27 +79,40 @@ nextflow run "$script_dir"/.. \
 n_cycles=1
 output_dirs=( "$outputs"/*/ )
 start_dir=$(pwd)
+if [ -f "logfiles.txt" ]
+then
+    mv "logfiles.txt" "logfiles_old.txt"
+fi
+
 for id in "${output_dirs[@]}"
 do  
     echo "id = $id"
-    for split in "$id"/split-*/
+    for split in "$id"runs/method_*/
     do  
         echo "split = $split"
-        for sample in "$split"/sample-*/
+        for sample in "$split"fold_*/sample_*/
         do  
             echo "sample = $sample"
-            for acq in "$sample"/*/
+            for acq in "$sample"*/
             do
-                if [[ $(basename "$acq") != "cycle-"* ]]
+                if [ "$(basename "$acq")" != "cycle_0" ]
                 then
                     echo "acq = $acq"
-                    cd "$acq"
-                    $inner_runner \
-                        "$script_dir"/run-inner-cycle.sh \
-                        "." "$max_cycles" "$profile" "$script_dir"
-                    cd "$start_dir"
+                    if [ "$slurm" == "slurm" ]
+                    then
+                        log_filename="$acq""nf-alchemish-inner.log"
+                        inner_runner="sbatch -o $log_filename"
+                        echo "$log_filename" >> "logfiles.txt"
+                    else
+                        inner_runner="bash"
+                    fi
+                    acq="$(readlink -f "$acq")"
+                    cmd="$inner_runner '"$script_dir"'/run-inner-cycle.sh '"$acq"' $max_cycles '"$profile"' '"$script_dir"'"
+                    echo "$cmd" > "$acq"run.sh
+                    bash "$acq"run.sh
                 fi
                 done
         done
     done
 done
+echo 'tail -f $(cat "logfiles.txt")' > "log-follow.sh"

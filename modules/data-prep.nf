@@ -2,7 +2,11 @@ process split_data_remote {
 
     tag "${id}.${split_rep}:${split_method}"
 
-    publishDir "${params.outputs}/${id}", mode: 'copy'
+    publishDir(
+        "${params.outputs}/${id}", 
+        mode: 'copy',
+        saveAs: { "splits/method_${split_method}/${it}" },
+    )
 
     // id, dataset, structure, split method, split_rep
     input:
@@ -12,14 +16,14 @@ process split_data_remote {
 
     // id, split_rep, [pool, val, test]
     output:
-    tuple val( id ), val( split_method ), path( "split-*/splits/data_*.parquet" ), emit: data
+    tuple val( id ), val( split_method ), path( "fold_*/data_*.parquet" ), emit: data
     tuple val( id ), val( split_method ), path( "split-plot*.{png,csv}" ), emit: plot
 
     script:
     """
     set -eoux pipefail
 
-    HF_HOME=cache eluent split \
+    XDG_HOME=cache ELUENT_CACHE=cache eluent split \
         "${dataset}" \
         --train "${split_p.pool}" \
         --validation "${split_p.val}" \
@@ -48,19 +52,7 @@ process split_data_remote {
         rm "\$f" && mv "data_train-indexed.parquet" "\$f"
     done
 
-    for d in fold_*
-    do
-        mv "\$d" "\${d//fold_/split-${split_method}-}"
-    done
-
-    for d in split-*/
-    do
-        mkdir -p "\$d"/splits
-        for f in "\$d"/data_*.parquet
-        do
-            mv "\$f" "\$d"/splits
-        done
-    done
+    rm -rf cache
 
     """
 
@@ -71,7 +63,11 @@ process split_data_local {
 
     tag "${id}.${split_rep}:${split_method}"
 
-    publishDir "${params.outputs}/${id}", mode: 'copy'
+    publishDir(
+        "${params.outputs}", 
+        mode: 'copy',
+        saveAs: { "${id}/method_${split_method}/seed_${split_rep}/${it}" },
+    )
 
     // id, dataset, structure, split method, split_rep
     input:
@@ -81,12 +77,12 @@ process split_data_local {
 
     // id, split_rep, [pool, val, test]
     output:
-    tuple val( id ), val( split_rep ), path( "split_*.parquet" ), emit: data
+    tuple val( id ), val( split_rep ), path( "data_*.parquet" ), emit: data
     tuple val( id ), val( split_rep ), path( "split-plot.{png,csv}" ), emit: plot
 
     script:
     """
-    HF_HOME=cache eluent split \
+    XDG_HOME=cache HF_HOME=cache eluent split \
         "${dataset}" \
         --train "${split_p.pool}" \
         --validation "${split_p.val}" \
@@ -96,20 +92,26 @@ process split_data_local {
         -k ${knn} \
         --seed "${split_rep}" \
         --cache cache \
-        --output split.parquet \
+        --output data.parquet \
         --plot-seed 0 \
         --plot split-plot.png
 
-    duckdb -c '
-        PRAGMA threads=${task.cpus};
-        COPY (
-            SELECT 
-                row_number() OVER () AS rowid, 
-                *
-            FROM read_parquet("split_train.parquet")
-        ) TO "split_train-indexed.parquet" (FORMAT Parquet);
-    '
-    rm "split_train.parquet" && mv "split_train-indexed.parquet" "split_train.parquet"
+    for f in fold_*/data_train.parquet
+    do
+        duckdb -c '
+            PRAGMA threads=${task.cpus};
+            COPY (
+                SELECT 
+                    row_number() OVER () AS rowid, 
+                    *
+                FROM read_parquet("'"\$f"'")
+            ) TO "data_train-indexed.parquet" (FORMAT Parquet);
+        '
+        rm "\$f" && mv "data_train-indexed.parquet" "\$f"
+    done
+
+    rm -rf cache
+
     """
 
 }

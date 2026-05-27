@@ -98,7 +98,8 @@ include {
   write_init_info; 
 } from './modules/info.nf'
 include { 
-  predict; 
+  predict;
+  CleanUpModelFiles;
 } from './modules/predicting.nf'
 include { 
   train; 
@@ -198,7 +199,8 @@ workflow init {
 
   // Workflow
   split_data_local( 
-    data_ch.local.map { [ it[0], file(it[1], checkIfExists: true) ] + it[2..-1] },
+    data_ch.local
+      .map { [ it[0], file( it[1], checkIfExists: true ) ] + it[2..-1] },
     split_fracs,
     knn,
   )  // id, split_method, [pool, val, test]
@@ -209,10 +211,10 @@ workflow init {
   )  // id, split_method, [pool, val, test]
 
   split_data_local.out.data
-    // .concat( split_data_remote.out.data )
+    .concat( split_data_remote.out.data )
     .transpose()
-    .map { v -> tuple(v[0], v[1], v[2].parent.parent.name, v[2])}
-    .groupTuple( by: [0,1,2] )
+    .map { v -> tuple(v[0], v[1], v[2].parent.name.split("_")[-1], v[2])}
+    .groupTuple( by: [0, 1, 2] )
     .combine( init_replicates )  // id, split_rep, split_method, [pool, val, test], init_rep
     .map { v -> [ 
       [id: v[0], split_rep: v[2], split_method: v[1], init_rep: v[-1]], 
@@ -272,10 +274,14 @@ workflow active_learning {
 
   main:
 
-  data_splits.map { it[0] }.set { pool_data }
+  data_splits
+    .map { it[0] }
+    .set { pool_data }
 
   get_chunk_indices(
-    iteration_state.map { it[0] }.combine( pool_data ),
+    iteration_state
+      .map { it[0] }
+      .combine( pool_data ),
     Channel.value( 1000 ),
   )  // cycle, start-stop.txt
 
@@ -284,15 +290,24 @@ workflow active_learning {
     .set { chunks }  // cycle, [start, stop]
 
   predict(
-    iteration_state.map { [ it[0], it[2] ] }.combine( pool_data ).combine( chunks, by: 0 ),  // cycle, model, pool, [start, stop]
+    iteration_state
+      .map { [ it[0], it[2] ] }
+      .combine( pool_data )
+      .combine( chunks, by: 0 ),  // cycle, model, pool, [start, stop]
     xy,
     acquisiton_fn,
   )
-    | groupTuple( by: 0 )  // cycle, [prediction,...]
-    | set { predictions }
+  predict.out.main
+    .groupTuple( by: 0 )  // cycle, [prediction,...]
+    .set { predictions }
+
+  // predict.out.model
+  //   .groupTuple( by: 0 )  // cycle, [model,...]
+  //   | CleanUpModelFiles
                   
   acquire(
     predictions.combine( iteration_state.map { it[0..1] }, by: 0 ),  // cycle [prediction,...], idx
+    xy,
     acquisiton_fn,
     batch_size,
     Channel.value( params.invert )
