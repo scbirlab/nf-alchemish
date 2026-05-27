@@ -37,6 +37,7 @@ split_rep=$(jq -r '.split_rep' < "$info_file")
 structure=$(jq -r '.structure' < "$info_file")
 target=$(jq -r '.target' < "$info_file")
 acq=$(jq -r '.acquisition_fn' < "$info_file")
+batch_size=$(jq -r '.batch_size' < "$info_file")
 epochs=$(jq -r '.epochs' < "$info_file")
 model_config=$(jq -r '.model_config' < "$info_file")
 
@@ -62,6 +63,7 @@ do
         --structure "$structure" \
         --target "$target" \
         --acquisition "$acq" "$inv_flag" \
+        --batch_size "$batch_size" \
         --cycle "$n_cycles" \
         --model "$model" \
         --epochs "$epochs" \
@@ -74,21 +76,21 @@ do
         -profile "$profile" #\
         # -with-report "$cycle_dir/report_cycle-${n_cycles}.html"
 
-    if [ "$n_cycles" -lt "$max_cycles" ] && [ "$n_cycles" -gt "3" ]
-    then
-        # clean up models if not first or final cycle
-        old_cycle=$(( $n_cycles - 2 ))
-        old_cycle_dir="$init_dir/cycle_$old_cycle"
-        old_model="$old_cycle_dir/model.dv"
-        for bname in input-data.hf training-data.hf params.pt
-        do
-            filename="${old_model}/$bname"
-            if [ -f "$filename" ]
-            then
-                rm -r "$filename"
-            fi
-        done
-    fi
+    # if [ "$n_cycles" -lt "$max_cycles" ] && [ "$n_cycles" -gt "3" ]
+    # then
+    #     # clean up models if not first or final cycle
+    #     old_cycle=$(( $n_cycles - 2 ))
+    #     old_cycle_dir="$init_dir/cycle_$old_cycle"
+    #     old_model="$old_cycle_dir/model.dv"
+    #     for bname in input-data.hf training-data.hf params.pt
+    #     do
+    #         filename="${old_model}/$bname"
+    #         if [ -f "$filename" ]
+    #         then
+    #             rm -r "$filename"
+    #         fi
+    #     done
+    # fi
     # After each run, update the variables for the next iteration:
     model="$cycle_dir/model.dv"
     training_idx="$cycle_dir/idx_all.csv"

@@ -254,7 +254,11 @@ workflow init {
     .combine( train_initial_model.out.checkpoint, by: [0,1] )  // [id, split_rep, init_rep], [structure, target], acq, [pool, val, test], labelled_idx, init_model
     .set { initial_model }
 
-  init_info.combine( model_config ).combine( epochs ) | write_init_info
+  init_info
+    .combine( model_config )
+    .combine( epochs )
+    .combine( Channel.value( params.batch_size ) ) 
+    | write_init_info
 
   emit:
   initial_model

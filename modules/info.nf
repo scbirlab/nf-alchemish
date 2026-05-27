@@ -11,7 +11,7 @@ process write_init_info {
 
     // [id, split_rep, init_rep], [structure, target], acq, config, epochs
     input:
-    tuple val( id ), val( xy ), val( acq ), val( model_config ), val( epochs )
+    tuple val( id ), val( xy ), val( acq ), val( model_config ), val( epochs ), val( batch_size )
 
     output:
     tuple val( id ), path( "info.json" )
@@ -25,6 +25,7 @@ process write_init_info {
         "structure": "${xy.structure}", 
         "target": "${xy.target}", 
         "acquisition_fn": "${acq}",
+        "sample_size": "${batch_size}",
         "model_config": "${model_config}",
         "epochs": ${epochs}
     }' > info.json

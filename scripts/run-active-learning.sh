@@ -17,18 +17,15 @@ github=${4:-"no"}
 
 outputs="$output_dir/outputs"
 
-MAX_BATCH_SIZE=100  # prevent slurm swamping
+MAX_PARALLEL=5  # prevent slurm swamping
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 
-all_jobs=()
-batch_jobs=()
-
-submit_batch() {
-    local jobids=$(IFS=:; echo "${batch_jobs[*]}")
-    all_jobs+=("${batch_jobs[@]}")
-    batch_jobs=()
-
-    echo "Submitted batch: $jobids"
+run_with_limit() {
+    while [ "$(jobs -rp | wc -l)" -ge "$MAX_PARALLEL" ]
+    do
+        sleep 5
+    done
+    bash "$1" &
 }
 
 # resolve symlinks
@@ -43,7 +40,6 @@ script_dir="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
 script_dir="$(readlink -f "$script_dir")"
 if [ "$slurm" == "slurm" ]
 then
-    inner_runner="sbatch -o nf-alchemish-inner.log"
     profile=standard
     if [ -f "interrupt.sh" ]
     then
@@ -56,7 +52,6 @@ then
         >> interrupt.sh
     done
 else
-    inner_runner="bash"
     if [ "$github" == "gh" ]
     then
         profile=gh
@@ -84,6 +79,7 @@ then
     mv "logfiles.txt" "logfiles_old.txt"
 fi
 
+job_scripts=()
 for id in "${output_dirs[@]}"
 do  
     echo "id = $id"
@@ -98,21 +94,40 @@ do
                 if [ "$(basename "$acq")" != "cycle_0" ]
                 then
                     echo "acq = $acq"
-                    if [ "$slurm" == "slurm" ]
-                    then
-                        log_filename="$acq""nf-alchemish-inner.log"
-                        inner_runner="sbatch -o $log_filename"
-                        echo "$log_filename" >> "logfiles.txt"
-                    else
-                        inner_runner="bash"
-                    fi
                     acq="$(readlink -f "$acq")"
-                    cmd="$inner_runner '"$script_dir"'/run-inner-cycle.sh '"$acq"' $max_cycles '"$profile"' '"$script_dir"'"
-                    echo "$cmd" > "$acq"run.sh
-                    bash "$acq"run.sh
+                    cat > "$acq/run.sh" <<EOF
+#!/usr/bin/env bash
+bash "${script_dir}/run-inner-cycle.sh" "${acq}" "${max_cycles}" "${profile}" "${script_dir}"
+EOF
+
+                    job_scripts+=( "$acq/run.sh" )
                 fi
                 done
         done
     done
 done
+
+if [ "${#job_scripts[@]}" -eq 0 ]; then
+    echo "No inner cycle jobs to submit."
+    exit 0
+fi
+
+printf '%s\n' "${job_scripts[@]}" > job_list.txt
+job_list_abs="$(readlink -f job_list.txt)"
+if [ "$slurm" == "slurm" ]
+then
+    sbatch --array=0-$(( ${#job_scripts[@]} - 1 ))%$MAX_PARALLEL \
+        --job-name=nf-inner \
+        -o nf-inner-%a.log \
+        --wrap='bash $(sed -n "$((SLURM_ARRAY_TASK_ID + 1))p" '"${job_list_abs}"')'
+else
+    for j in "${job_scripts[@]}"
+    do
+        run_with_limit "$j"
+    done
+    wait  # block until all finish
+fi
+for i in $(seq 0 $(( ${#job_scripts[@]} - 1 ))); do
+    echo "$(pwd)/nf-inner-${i}.log"
+done > logfiles.txt
 echo 'tail -f $(cat "logfiles.txt")' > "log-follow.sh"
