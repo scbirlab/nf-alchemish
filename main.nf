@@ -155,6 +155,8 @@ workflow {
       Channel.value( file( params.model_config, checkIfExists: true ) ),
       Channel.value( params.epochs ),
       Channel.value( params.n_partitions ),
+      Channel.value( params.this_split_rep ),
+      Channel.value( params.this_sample_rep ),
     )
 
   }
@@ -281,6 +283,8 @@ workflow active_learning {
   model_config
   epochs
   n_partitions
+  this_split_rep
+  this_sample_rep
 
   main:
 
@@ -331,6 +335,8 @@ workflow active_learning {
     batch_size,
     Channel.value( params.invert ),
     Channel.value( params.ucb_beta ? params.ucb_beta : "placeholder" ),
+    this_split_rep,
+    this_sample_rep
   )  // cycle, new_idx
 
   train(

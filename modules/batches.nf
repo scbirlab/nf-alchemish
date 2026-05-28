@@ -71,6 +71,8 @@ process Acquire {
     val batch_size
     val invert
     val beta
+    val split_rep
+    val sample_rep
 
     // [id, split_rep, init_rep], [structure, target], acq, new_idx
     output:
@@ -96,7 +98,7 @@ process Acquire {
             (HASH(key || seed || index) >> 11) * POW(2.0, -53)
         );
     """
-    def pseudorandom_seed = "${acq}_${id}"
+    def pseudorandom_seed = "${acq}_${id}_${split_rep}_${sample_rep}"
     def postrun = """
     grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
     cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"

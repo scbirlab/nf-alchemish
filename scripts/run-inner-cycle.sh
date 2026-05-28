@@ -34,6 +34,7 @@ fi
 splits_dir=$(readlink -f "$splits_dir")
 info_file=$(readlink -f "$info_file")
 split_rep=$(jq -r '.split_rep' < "$info_file")
+sample_rep=$(jq -r '.batch_rep' < "$info_file")
 structure=$(jq -r '.structure' < "$info_file")
 target=$(jq -r '.target' < "$info_file")
 acq=$(jq -r '.acquisition_fn' < "$info_file")
@@ -70,6 +71,8 @@ do
             --acquisition "$acq" \
             --batch_size "$batch_size" \
             --cycle "$n_cycles" \
+            --this_split_rep "$split_rep" \
+            --this_sample_rep "$sample_rep" \
             --model "$model" \
             --epochs "$epochs" \
             --model_config "$model_config" \
