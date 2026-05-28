@@ -244,7 +244,7 @@ workflow init {
     }
     .combine( init_replicates )
     .map { v -> [ 
-      v[0] << [init_rep: v[-1]], 
+      v[0] + [init_rep: v[-1]], 
       v[1],
     ] }
     .set { split_data_out }
