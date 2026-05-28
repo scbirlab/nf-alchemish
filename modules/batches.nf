@@ -1,7 +1,7 @@
 // [id, split_rep, init_rep], [pool, val, test]
 process take_first_batch {
 
-    tag "${id}"
+    tag "${id}:b${batch_size}"
     cpus 1
 
     publishDir(
@@ -11,7 +11,7 @@ process take_first_batch {
     )
 
     input:
-    tuple val( id ), path( parquet )
+    tuple val( id ), path( pool )
     val batch_size
 
     output:
@@ -23,7 +23,7 @@ process take_first_batch {
         PRAGMA threads=${task.cpus};
         COPY (
             SELECT rowid
-            FROM read_parquet('${parquet}')
+            FROM read_parquet('data_pool-partition_id_*.parquet')
             USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE (${id.init_rep})
         ) TO 'idx.csv' (FORMAT CSV);
     "
@@ -47,7 +47,7 @@ process GetBestObserved {
     """
     y_star=\$(duckdb -c "
         SELECT MAX(\\"${xy.target}\\")
-        FROM read_parquet('${pool}')
+        FROM read_parquet('data_pool-partition_id_*.parquet')
         INNER JOIN read_csv('${idx}', header=false, names=['rowid']) 
             USING (rowid);
     " | tail -n1)
@@ -64,7 +64,7 @@ process Acquire {
     publishDir "${params.outputs}", mode: 'copy'
 
     input:
-    tuple val( id ), path( '*.parquet' ), path( idx ), val( best )
+    tuple val( id ), path( pool ), path( idx ), val( best )
     val xy
     val acq
     val batch_size
@@ -88,6 +88,8 @@ process Acquire {
     ]
     def col = colMap.get(acq, acq)
     def op = invert ? '*' : '/'
+
+    def pool_files = 'data_pool-partition_id_*.parquet'
     def pseudorandom_macro = """
         -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
         -- Returns a pseudorandom fp64 number in the range [0, 1). The number
@@ -111,7 +113,7 @@ process Acquire {
             COPY (
                 WITH remaining AS (
                     SELECT rowid
-                    FROM read_parquet('*.parquet') 
+                    FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
@@ -130,7 +132,7 @@ process Acquire {
             COPY (
                 WITH remaining AS (
                     SELECT rowid
-                    FROM read_parquet('*.parquet') 
+                    FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
@@ -151,7 +153,7 @@ process Acquire {
             COPY (
                 WITH remaining AS (
                     SELECT rowid
-                    FROM read_parquet('*.parquet') 
+                    FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
@@ -174,7 +176,7 @@ process Acquire {
             COPY (
                 WITH remaining AS (
                     SELECT rowid
-                    FROM read_parquet('*.parquet') 
+                    FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
@@ -204,7 +206,7 @@ process Acquire {
                         prediction AS mu,
                         sqrt(\\"prediction variance\\") AS sigma,
                         (prediction - ${best}) / NULLIF(sqrt(\\"prediction variance\\"), 0) AS z
-                    FROM read_parquet('*.parquet') 
+                    FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
@@ -231,7 +233,7 @@ process Acquire {
             COPY (
                 WITH remaining AS (
                     SELECT rowid, \\"${col}\\"
-                    FROM read_parquet('*.parquet') 
+                    FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )

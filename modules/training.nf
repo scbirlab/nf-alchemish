@@ -16,7 +16,7 @@ process train_initial_model {
 
     // [id, split_rep, init_rep], [structure, target], [pool, val, test], labelled_idx
     input:
-    tuple val( id ), val( xy ), path( data_splits ), path( idx )
+    tuple val( id ), path( idx ), path( pool ), path( validation ), path( test ), val( xy )
     path model_config
     val epochs
 
@@ -31,7 +31,7 @@ process train_initial_model {
     PRAGMA threads=${task.cpus};
     COPY (
         SELECT * 
-        FROM read_parquet('${data_splits[0]}')
+        FROM read_parquet('data_pool-*.parquet')
         INNER JOIN read_csv('${idx}', header=false, names=['rowid']) 
         USING (rowid)
     ) TO 'train.csv' (FORMAT CSV);
@@ -39,8 +39,8 @@ process train_initial_model {
 
     XDG_HOME=cache DUVIDNN_CACHE=cache duvidnn train \
         -1 "train.csv" \
-        -2 "${data_splits[1]}" \
-        --test "${data_splits[2]}" \
+        -2 "${validation}" \
+        --test "${test}" \
         -x clogp \
         -S "${xy.structure}" \
         -y "${xy.target}" \
@@ -89,7 +89,7 @@ process train {
     PRAGMA threads=${task.cpus};
         COPY (
             SELECT * 
-            FROM read_parquet('${pool}') 
+            FROM read_parquet('data_pool-*.parquet') 
             INNER JOIN read_csv('${idx}', header=false, names=['rowid']) USING (rowid)
         ) TO 'train.csv' (FORMAT CSV);
     "

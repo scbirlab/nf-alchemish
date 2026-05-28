@@ -216,23 +216,42 @@ workflow init {
     split_fracs,
     knn,
     n_partitions,
-  )  // id, split_method, [pool, val, test]
+  )  // test_val -> id, split_method, [test, val] // pool -> id, split_method, pool
 
-  split_data_local.out.data
-    .concat( split_data_remote.out.data )
+  split_data_local.out.pool
+    .concat( split_data_remote.out.pool )
     .transpose()
-    .map { v -> tuple(v[0], v[1], v[2].parent.name.split("_")[-1], v[2])}
-    .groupTuple( by: [0, 1, 2] )
-    .combine( init_replicates )  // id, split_rep, split_method, [pool, val, test], init_rep
-    .view()
+    .map { v -> [ v[0], v[1], v[2].parent.name.split("_")[-1], v[2] ] }
+    .groupTuple( by: [0, 1, 2] )   // [id, split_method, fold, [all partition files]]
+    .set { pool_by_fold }
+
+  split_data_local.out.test_val
+    .concat( split_data_remote.out.test_val )
+    .transpose()
+    .map { v -> [ v[0], v[1], v[2].parent.name.split("_")[-1], v[2] ] }
+    .groupTuple( by: [0, 1, 2] )   // [id, split_method, fold, [val, test]]
+    .set { tv_by_fold }
+
+  pool_by_fold
+    .combine( tv_by_fold, by: [0, 1, 2] )
+    .map { v -> [
+        [id: v[0], split_rep: v[2], split_method: v[1]],
+        [
+          pool: v[3],
+          validation: v[4].find { it.name.contains("validation") },
+          test: v[4].find { it.name.contains("test") }]
+        ] 
+    }
+    .combine( init_replicates )
     .map { v -> [ 
-      [id: v[0], split_rep: v[2], split_method: v[1], init_rep: v[-1]], 
-      [pool: v[3][1], validation: v[3][2], test: v[3][0] ] 
+      v[0] << [init_rep: v[-1]], 
+      v[1],
     ] }
-    .set { split_data_out }  // [id, split_rep, split_method, init_rep], [pool, val, test]
+    .set { split_data_out }
   
   take_first_batch(
-    split_data_out.map { v -> [ v[0], v[1].pool ] },
+    split_data_out
+      .map { v -> [ v[0], v[1].pool ] },
     init_batch_size,
   )  // [id, split_rep, init_rep], labelled_idx
   
@@ -250,7 +269,7 @@ workflow init {
     .set { init_data }
 
   train_initial_model(
-    init_data.map { it[0..1] + [ [it[2].pool, it[2].validation, it[2].test ],  it[3]] },
+    init_data.map { [ it[0], it[-1], it[2].pool, it[2].validation, it[2].test, it[1] ] },
     model_config,
     epochs,
   )  // [id, split_rep, init_rep], init_model

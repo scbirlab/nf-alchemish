@@ -11,7 +11,7 @@ process predict {
 
     // [id, split_rep, init_rep], [structure, target], acq, [pool, val, test], idx, model, [start, stop]
     input:
-    tuple val( id ), path( model ), path( pool ), val( partition_idx )
+    tuple val( id ), path( model ), path( pool )
     val xy
     val acq
 
@@ -26,7 +26,7 @@ process predict {
     """
     XDG_HOME=cache DUVIDNN_CACHE=cache \
     duvidnn predict \
-        --test "${pool}/partition_id=${partition_idx}/data_0.parquet" \
+        --test "data_pool-partition_id_${partition_idx}.parquet" \
         -S "${xy.structure}" ${acq_flag} \
         --extras rowid partition_id \
         --tanimoto \
