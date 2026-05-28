@@ -44,14 +44,18 @@ process split_data_remote {
         duckdb -c "
             PRAGMA threads=${task.cpus};
             COPY (
-                SELECT 
-                    row_number() OVER () AS rowid, 
-                    *
-                FROM read_parquet('\${f}')
+                WITH indexed AS (
+                    SELECT 
+                        row_number() OVER () AS rowid,
+                        *
+                    FROM read_parquet('\${f}')
+                )
+                SELECT *, (rowid % ${n_partitions})::INTEGER AS partition_id
+                FROM indexed
             ) TO 'data_train-partitioned/' 
             (
                 FORMAT Parquet,
-                PARTITION_BY (rowid % ${n_partitions}),
+                PARTITION_BY (partition_id),
                 OVERWRITE_OR_IGNORE
             );
         "
