@@ -224,6 +224,7 @@ workflow init {
     .map { v -> tuple(v[0], v[1], v[2].parent.name.split("_")[-1], v[2])}
     .groupTuple( by: [0, 1, 2] )
     .combine( init_replicates )  // id, split_rep, split_method, [pool, val, test], init_rep
+    .view()
     .map { v -> [ 
       [id: v[0], split_rep: v[2], split_method: v[1], init_rep: v[-1]], 
       [pool: v[3][1], validation: v[3][2], test: v[3][0] ] 

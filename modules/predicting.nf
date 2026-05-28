@@ -26,7 +26,7 @@ process predict {
     """
     XDG_HOME=cache DUVIDNN_CACHE=cache \
     duvidnn predict \
-        --test "${pool}/partition_id=${partition_idx}/data.parquet" \
+        --test "${pool}/partition_id=${partition_idx}/data_0.parquet" \
         -S "${xy.structure}" ${acq_flag} \
         --extras rowid partition_id \
         --tanimoto \

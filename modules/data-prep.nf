@@ -17,7 +17,7 @@ process split_data_remote {
 
     // id, split_rep, [pool, val, test]
     output:
-    tuple val( id ), val( split_method ), path( "fold_*/data_*.pqp" ), emit: data
+    tuple val( id ), val( split_method ), path( "fold_*/data_*.pqp/" ), emit: data
     tuple val( id ), val( split_method ), path( "split-plot*.{png,csv}" ), emit: plot
 
     script:
