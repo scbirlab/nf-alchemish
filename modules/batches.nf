@@ -87,6 +87,21 @@ process Acquire {
     ]
     def col = colMap.get(acq, acq)
     def op = invert ? '*' : '/'
+    def pseudorandom_macro = """
+        -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
+        -- Returns a pseudorandom fp64 number in the range [0, 1). The number
+        -- is determined by the given `key`, `seed` string, and integer `index`.
+        CREATE MACRO pseudorandom_uniform(key, seed, index)
+        AS (
+            (HASH(key || seed || index) >> 11) * POW(2.0, -53)
+        );
+    """
+    def pseudorandom_seed = "${acq}_${id}"
+    def postrun = """
+    grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
+    cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
+    mv idx_all0.csv idx_all.csv
+    """
     if ( acq == "random" ) {
 
         """
@@ -104,11 +119,7 @@ process Acquire {
                 USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE(${id})
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
-
-        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
-        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
-        mv idx_all0.csv idx_all.csv
-
+        ${postrun}
         """
     }
     else if ( acq == "ucb" ) {
@@ -128,23 +139,14 @@ process Acquire {
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
-
-        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
-        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
-        mv idx_all0.csv idx_all.csv
+        ${postrun}
         """
     }
     else if ( acq == "thompson" ) {
         """
         duckdb -c "
-            PRAGMA threads=${task.cpus};]
-            -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
-            -- Returns a pseudorandom fp64 number in the range [0, 1). The number
-            -- is determined by the given `key`, `seed` string, and integer `index`.
-            CREATE MACRO pseudorandom_uniform(key, seed, index)
-            AS (
-                (HASH(key || seed || index) >> 11) * POW(2.0, -53)
-            );
+            PRAGMA threads=${task.cpus};
+            ${pseudorandom_macro}
             COPY (
                 WITH remaining AS (
                     SELECT rowid
@@ -156,28 +158,18 @@ process Acquire {
                 FROM remaining
                 ORDER BY 
                     prediction + sqrt(\\"prediction variance\\") * 
-                    sqrt(-2.0 * ln(pseudorandom_uniform('${acq}', 42, rowid))) * cos(2.0 * pi() * pseudorandom_uniform('${acq}', 43, rowid))
+                    sqrt(-2.0 * ln(pseudorandom_uniform('${pseudorandom_seed}', 42, rowid))) * cos(2.0 * pi() * pseudorandom_uniform('${acq}', 43, rowid))
                 DESC
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
-
-        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
-        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
-        mv idx_all0.csv idx_all.csv
+        ${postrun}
         """
     }
     else if ( acq == "pi" ) {
         """
         duckdb -c "
-            PRAGMA threads=${task.cpus};]
-            -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
-            -- Returns a pseudorandom fp64 number in the range [0, 1). The number
-            -- is determined by the given `key`, `seed` string, and integer `index`.
-            CREATE MACRO pseudorandom_uniform(key, seed, index)
-            AS (
-                (HASH(key || seed || index) >> 11) * POW(2.0, -53)
-            );
+            PRAGMA threads=${task.cpus};
             COPY (
                 WITH remaining AS (
                     SELECT rowid
@@ -197,23 +189,13 @@ process Acquire {
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
-
-        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
-        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
-        mv idx_all0.csv idx_all.csv
+        ${postrun}
         """
     }
     else if ( acq == "ei" ) {
         """
         duckdb -c "
-            PRAGMA threads=${task.cpus};]
-            -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
-            -- Returns a pseudorandom fp64 number in the range [0, 1). The number
-            -- is determined by the given `key`, `seed` string, and integer `index`.
-            CREATE MACRO pseudorandom_uniform(key, seed, index)
-            AS (
-                (HASH(key || seed || index) >> 11) * POW(2.0, -53)
-            );
+            PRAGMA threads=${task.cpus};
             COPY (
                 WITH remaining AS (
                     SELECT 
@@ -225,34 +207,26 @@ process Acquire {
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
-                CASE WHEN sigma > 0 THEN
-                    sigma * (
-                        z * 0.5 * (1 + erf(z / sqrt(2))) +
-                        exp(-0.5 * z * z) / sqrt(2 * pi())
-                    )
-                    ELSE 0 END AS ei
+                SELECT rowid,
+                    CASE WHEN sigma > 0 THEN
+                        sigma * (
+                            z * 0.5 * (1 + erf(z / sqrt(2))) +
+                            exp(-0.5 * z * z) / sqrt(2 * pi())
+                        )
+                        ELSE 0 END AS ei
                 FROM remaining
                 ORDER BY ei DESC
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
-
-        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
-        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
-        mv idx_all0.csv idx_all.csv
+        ${postrun}
         """
     }
     else {
         """
         duckdb -c "
             PRAGMA threads=${task.cpus};
-            -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
-            -- Returns a pseudorandom fp64 number in the range [0, 1). The number
-            -- is determined by the given `key`, `seed` string, and integer `index`.
-            CREATE MACRO pseudorandom_uniform(key, seed, index)
-            AS (
-                (HASH(key || seed || index) >> 11) * POW(2.0, -53)
-            );
+            ${pseudorandom_macro}
             COPY (
                 WITH remaining AS (
                     SELECT rowid, \\"${col}\\"
@@ -263,15 +237,11 @@ process Acquire {
                 SELECT rowid, \\"${col}\\"
                 FROM remaining
                 WHERE \\"${col}\\" > 0
-                ORDER BY -LN(1.0 - pseudorandom_uniform('${acq}', 42, rowid)) ${op} \\"${col}\\"
+                ORDER BY -LN(1.0 - pseudorandom_uniform('${pseudorandom_seed}', 42, rowid)) ${op} \\"${col}\\"
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
-
-        grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
-        cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
-        mv idx_all0.csv idx_all.csv
-
+        ${postrun}
         """
     }
 
