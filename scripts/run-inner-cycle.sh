@@ -68,7 +68,7 @@ do
             --test "$splits_dir"/method_*/"fold_$split_rep/data_test.parquet" \
             --structure "$structure" \
             --target "$target" \
-            --acquisition "$acq" \
+            --acquisition "$acq" $inv_flag \
             --batch_size "$batch_size" \
             --cycle "$n_cycles" \
             --this_split_rep "$split_rep" \

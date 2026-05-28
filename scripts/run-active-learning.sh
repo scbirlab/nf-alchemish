@@ -21,11 +21,13 @@ MAX_PARALLEL=25  # prevent slurm swamping
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 
 run_with_limit() {
-    while [ "$(jobs -rp | wc -l)" -ge "$MAX_PARALLEL" ]
-    do
+    local script="$1" 
+    local logfile="$2"
+    while [ "$(jobs -rp | wc -l)" -ge "$MAX_PARALLEL" ] 
+    do 
         sleep 5
     done
-    bash "$1" &
+    bash "$script" > "$logfile" 2>&1 &
 }
 
 # resolve symlinks
@@ -125,10 +127,13 @@ then
         echo "$(pwd)/nf-inner-${i}.log"
     done > logfiles.txt
 else
+    local_idx=0
     for j in "${job_scripts[@]}"
     do
-        run_with_limit "$j" nf-inner-"$1.log" 2>&1 &
-        echo "$(pwd)/nf-inner-$1.log" >> logfiles.txt
+        logfile="$(pwd)/nf-inner-${local_idx}.log"
+        run_with_limit "$j" "$logfile"
+        echo "$logfile" >> logfiles.txt
+        local_idx=$(( local_idx + 1 ))
     done
     wait  # block until all finish
 fi

@@ -24,7 +24,7 @@ process take_first_batch {
         COPY (
             SELECT rowid
             FROM read_parquet('${parquet}')
-            USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE (42)
+            USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE (${id.init_rep})
         ) TO 'idx.csv' (FORMAT CSV);
     "
 
@@ -136,7 +136,7 @@ process Acquire {
                 )
                 SELECT rowid
                 FROM remaining
-                ORDER BY prediction + ${beta} * sqrt("prediction variance") DESC
+                ORDER BY prediction + ${beta} * sqrt(\\"prediction variance\\") DESC
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
@@ -159,7 +159,7 @@ process Acquire {
                 FROM remaining
                 ORDER BY 
                     prediction + sqrt(\\"prediction variance\\") * 
-                    sqrt(-2.0 * ln(pseudorandom_uniform('${pseudorandom_seed}', 42, rowid))) * cos(2.0 * pi() * pseudorandom_uniform('${acq}', 43, rowid))
+                    sqrt(-2.0 * ln(pseudorandom_uniform('${pseudorandom_seed}', 42, rowid))) * cos(2.0 * pi() * pseudorandom_uniform('${pseudorandom_seed}', 43, rowid))
                 DESC
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
@@ -202,8 +202,8 @@ process Acquire {
                     SELECT 
                         rowid,
                         prediction AS mu,
-                        sqrt("prediction variance") AS sigma,
-                        (prediction - ${best}) / NULLIF(sqrt("prediction variance"), 0) AS z
+                        sqrt(\\"prediction variance\\") AS sigma,
+                        (prediction - ${best}) / NULLIF(sqrt(\\"prediction variance\\"), 0) AS z
                     FROM read_parquet('*.parquet') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
