@@ -46,7 +46,7 @@ process GetBestObserved {
 
     script:
     """
-    y_star=$(duckdb -c "
+    y_star=\$(duckdb -c "
         SELECT MAX(\\"${xy.target}\\")
         FROM read_parquet('${pool}')
         INNER JOIN read_csv('${idx}', header=false, names=['rowid']) 
