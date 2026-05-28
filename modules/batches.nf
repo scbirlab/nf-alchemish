@@ -64,12 +64,14 @@ process Acquire {
     publishDir "${params.outputs}", mode: 'copy'
 
     input:
-    tuple val( id ), path( pool ), path( idx ), val( best )
+    tuple val( id ), path( pool, stageAs: 'predicted/pseudopartition_*.parquet' ), path( idx ), val( best )
     val xy
     val acq
     val batch_size
     val invert
     val beta
+    val ei_jitter
+    val pi_jitter
     val split_rep
     val sample_rep
 
@@ -89,7 +91,7 @@ process Acquire {
     def col = colMap.get(acq, acq)
     def op = invert ? '*' : '/'
 
-    def pool_files = 'data_pool-partition_id_*.parquet'
+    def pool_files = 'predicted/pseudopartition_*.parquet'
     def pseudorandom_macro = """
         -- From https://blog.moertel.com/posts/2024-08-23-sampling-with-sql.html
         -- Returns a pseudorandom fp64 number in the range [0, 1). The number
@@ -183,7 +185,7 @@ process Acquire {
                 SELECT rowid,
                     (
                         1 + erf(
-                            (prediction - ${best}) 
+                            (prediction - ${best} - ${pi_jitter}) 
                             / (sqrt(\\"prediction variance\\") * sqrt(2))
                         )
                     ) / 2 AS pi_score
@@ -205,7 +207,7 @@ process Acquire {
                         rowid,
                         prediction AS mu,
                         sqrt(\\"prediction variance\\") AS sigma,
-                        (prediction - ${best}) / NULLIF(sqrt(\\"prediction variance\\"), 0) AS z
+                        (prediction - ${best} - ${ei_jitter}) / NULLIF(sqrt(\\"prediction variance\\"), 0) AS z
                     FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)

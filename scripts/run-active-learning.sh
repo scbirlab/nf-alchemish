@@ -8,6 +8,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --output=nf-alchemish.log
 
+MAX_PARALLEL=10  # prevent slurm swamping
 set -exuo pipefail
 
 max_cycles=${1:-10}
@@ -17,8 +18,6 @@ github=${4:-"no"}
 
 outputs="$output_dir/outputs"
 
-MAX_PARALLEL=25  # prevent slurm swamping
-SCRIPT_PATH="${BASH_SOURCE[0]}"
 
 run_with_limit() {
     local script="$1" 
@@ -30,16 +29,17 @@ run_with_limit() {
     bash "$script" > "$logfile" 2>&1 &
 }
 
+SCRIPT_PATH="${BASH_SOURCE[0]}"
 # resolve symlinks
 while [ -h "$SCRIPT_PATH" ]; do
   DIR="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
   SCRIPT_PATH="$( readlink "$SCRIPT_PATH" )"
   [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$DIR/$SCRIPT_PATH"
 done
-
 # absolute directory
 script_dir="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
 script_dir="$(readlink -f "$script_dir")"
+
 if [ "$slurm" == "slurm" ]
 then
     profile=standard

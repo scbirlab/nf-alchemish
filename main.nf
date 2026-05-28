@@ -142,9 +142,9 @@ workflow {
         file( params.model, checkIfExists: true ) 
       ] ),
       Channel.of( [ 
-        file( params.pool, checkIfExists: true ), 
-        file( params.val, checkIfExists: true ), 
-        file( params.test, checkIfExists: true ) 
+        pool: file( params.pool, checkIfExists: true ), 
+        val: file( params.val, checkIfExists: true ), 
+        test: file( params.test, checkIfExists: true ) 
       ] ),
       Channel.value( [
         structure: params.structure, 
@@ -310,7 +310,7 @@ workflow active_learning {
   main:
 
   data_splits
-    .map { it[0] }
+    .map { v -> v.pool }
     .set { pool_data }
 
   // get_chunk_indices(
@@ -326,9 +326,8 @@ workflow active_learning {
 
   predict(
     iteration_state
-      .map { [ it[0], it[2] ] }
-      .combine( pool_data )
-      .combine( Channel.of( 0..<params.n_partitions ) ),  // cycle, model, pool, partition_idx
+      .map { v -> [ v[0], v[2] ] }
+      .combine( pool_data.flatten() ),  // cycle, model, pool_partition
     xy,
     acquisiton_fn,
   )
@@ -343,7 +342,7 @@ workflow active_learning {
   GetBestObserved(
     iteration_state
       .map { v -> [ v[0], v[1] ] }
-      .combine( pool_data ),  // cycle, idx, pool
+      .combine( pool_data.map { v -> [v] } ),  // cycle, idx, pool
     xy,
   )
                   
@@ -356,8 +355,10 @@ workflow active_learning {
     batch_size,
     Channel.value( params.invert ),
     Channel.value( params.ucb_beta ? params.ucb_beta : "placeholder" ),
+    Channel.value( params.ei_jitter ? params.ei_jitter : "placeholder" ),
+    Channel.value( params.pi_jitter ? params.pi_jitter : "placeholder" ),
     this_split_rep,
-    this_sample_rep
+    this_sample_rep,
   )  // cycle, new_idx
 
   train(

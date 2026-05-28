@@ -63,7 +63,7 @@ do
         mkdir -p "$cycle_dir"
         nextflow run "$script_dir"/.. \
             --workflow cycle \
-            --pool "$splits_dir"/method_*/"fold_$split_rep/data_train.parquet" \
+            --pool "$splits_dir"/method_*/"fold_$split_rep/pool/data_pool-partition_id_*.parquet" \
             --val "$splits_dir"/method_*/"fold_$split_rep/data_validation.parquet" \
             --test "$splits_dir"/method_*/"fold_$split_rep/data_test.parquet" \
             --structure "$structure" \
@@ -81,7 +81,7 @@ do
             -resume \
             -with-dag inner.html \
             -work-dir "$(readlink -f "$splits_dir"/../../..)"/work \
-            -profile "$profile"#\
+            -profile "$profile" #\
         echo "$?" > "$cycle_dir"/.exitcode
             # -with-report "$cycle_dir/report_cycle-${n_cycles}.html"
 

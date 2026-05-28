@@ -6,6 +6,14 @@ process split_data_remote {
         "${params.outputs}/${id}", 
         mode: 'copy',
         saveAs: { "splits/method_${split_method}/${it}" },
+        pattern: "fold_*/data_{test,validation}*.parquet",
+    )
+
+    publishDir(
+        "${params.outputs}/${id}", 
+        mode: 'copy',
+        saveAs: { "splits/method_${split_method}/${it.split('/')[0]}/pool/${it.split('/')[1]}" },
+        pattern: "fold_*/data_pool-partition_id_*.parquet",
     )
 
     // id, dataset, structure, split method, split_rep
@@ -17,7 +25,7 @@ process split_data_remote {
 
     // id, split_rep, [pool, val, test]
     output:
-    tuple val( id ), val( split_method ), path( "fold_*/data_*.parquet", arity: "2..*" ), emit: test_val
+    tuple val( id ), val( split_method ), path( "fold_*/data_{test,validation}*.parquet", arity: "2..*" ), emit: test_val
     tuple val( id ), val( split_method ), path( "fold_*/data_pool-partition_id_*.parquet", arity: "1..*" ), emit: pool
     tuple val( id ), val( split_method ), path( "split-plot*.{png,csv}" ), emit: plot
 

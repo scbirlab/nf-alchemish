@@ -2,6 +2,7 @@
 process predict {
 
     tag "${id}:${xy.target}:${acq}"
+    label "array_job"
     // label "gpu_single"
 
     // errorStrategy 'retry'  // sometimes GPU fails
@@ -17,7 +18,7 @@ process predict {
 
     // [id, split_rep, init_rep], [structure, target], acq, prediction
     output:
-    tuple val( id ), path( "predicted-*.parquet" ), emit: main
+    tuple val( id ), path( "predicted.parquet" ), emit: main
     tuple val( id ), path( model ), emit: model
     tuple val( id ), path( "*.{png,csv}" ), emit: plots
 
@@ -26,14 +27,14 @@ process predict {
     """
     XDG_HOME=cache DUVIDNN_CACHE=cache \
     duvidnn predict \
-        --test "data_pool-partition_id_${partition_idx}.parquet" \
+        --test "${pool}" \
         -S "${xy.structure}" ${acq_flag} \
         --extras rowid partition_id \
         --tanimoto \
         --variance \
         --optimality \
         --checkpoint "${model}" \
-        --output "predicted-${partition_idx}.parquet" \
+        --output "predicted.parquet" \
         --cache cache
 
     rm -rf cache
