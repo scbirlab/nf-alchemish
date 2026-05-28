@@ -85,9 +85,13 @@ log.info pipeline_title + """\
 
 include { 
   take_first_batch;
+  AcquisitionRequest;
   GetBestObserved;
-  Acquire; 
+  PublishRequest;
 } from './modules/batches.nf'
+include { 
+  GenerateRequestedLabels;
+} from './modules/label.nf'
 include { 
   split_data_remote;
   split_data_remote as split_data_local;
@@ -138,7 +142,7 @@ workflow {
     active_learning(
       Channel.of( [ 
         params.cycle, 
-        file( params.training_idx, checkIfExists: true  ), 
+        file( params.training_idx, checkIfExists: true ), 
         file( params.model, checkIfExists: true ) 
       ] ),
       Channel.of( [ 
@@ -262,7 +266,8 @@ workflow init {
     )      // [id, split_rep, init_rep], [pool, val, test], labelled_idx
     .map { [ it[0].id ] + it }
     .combine(
-      csv_rows.map { tuple( it[0], [structure: it[2], target: it[4]] ) },
+      csv_rows
+        .map { tuple( it[0], [structure: it[2], target: it[4]] ) },
       by: 0,
     )  // [id, split_rep, init_rep], [pool, val, test], labelled_idx, [structure, target]
     .map { [ it[1], it[-1] ] + it[2..-2]  }  // [id, split_rep, init_rep], [structure, target], [pool, val, test], labelled_idx
@@ -341,34 +346,49 @@ workflow active_learning {
 
   GetBestObserved(
     iteration_state
-      .map { v -> [ v[0], v[1] ] }
+      .map { v -> v[0..1] }
       .combine( pool_data.map { v -> [v] } ),  // cycle, idx, pool
     xy,
   )
                   
-  Acquire(
+  AcquisitionRequest(
     predictions
       .combine( iteration_state.map { v -> v[0..1] }, by: 0 )
-      .combine( GetBestObserved.out, by: 0 ),  // cycle, [prediction,...], idx
+      .combine( GetBestObserved.out, by: 0 ),  // cycle, [prediction,...], idx, best
     xy,
     acquisiton_fn,
     batch_size,
     Channel.value( params.invert ),
-    Channel.value( [params.ucb_beta ? params.ucb_beta : "placeholder", params.ucb_scheduled, params.ucb_delta ] ),
+    Channel.value( [(params.ucb_beta ? params.ucb_beta : "placeholder"), params.ucb_scheduled, params.ucb_delta ] ),
     Channel.value( params.ei_jitter ? params.ei_jitter : "placeholder" ),
     Channel.value( params.pi_jitter ? params.pi_jitter : "placeholder" ),
     this_split_rep,
     this_sample_rep,
   )  // cycle, new_idx
 
+  PublishRequest(
+    AcquisitionRequest.out.new_idx
+      .combine( pool_data.map { v -> [v] } )
+  )
+
+  GenerateRequestedLabels(
+    PublishRequest.out,
+    Channel.value( params.mode ),
+    Channel.value( params.script ? file( params.script, checkIfExists: true ) : file( "placeholder" ) ),
+  )
+  // TODO: Accumulate all requested labels and feed to train
   train(
-    Acquire.out.all_idx.combine( data_splits ), 
+    AcquisitionRequest.out.all_idx
+      .combine( 
+        data_splits
+        .map { v -> [ v.pool, v.val, v.test ] },
+      ),  // cycle, idx, [prediction,...]
     xy,
     model_config,
     epochs,
   )  // cycle, model
 
-  Acquire.out.all_idx
+  AcquisitionRequest.out.all_idx
     .combine( train.out.checkpoint, by: 0 )  // cycle, idx, model
     .set { new_state }
 

@@ -8,7 +8,7 @@ process predict {
     // errorStrategy 'retry'  // sometimes GPU fails
     // maxRetries 3
 
-    publishDir "${params.outputs}", mode: 'copy', pattern: "*.{png,csv}"
+    publishDir "${params.outputs}/prediction-plots", mode: 'copy', pattern: "*.{png,csv}"
 
     // [id, split_rep, init_rep], [structure, target], acq, [pool, val, test], idx, model, [start, stop]
     input:
@@ -29,6 +29,7 @@ process predict {
     duvidnn predict \
         --test "${pool}" \
         -S "${xy.structure}" ${acq_flag} \
+        -y "${xy.target}" \
         --extras rowid partition_id \
         --tanimoto \
         --variance \

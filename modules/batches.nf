@@ -18,23 +18,41 @@ process take_first_batch {
     tuple val( id ), path( "idx_all.csv" )
 
     script:
-    """
-    duckdb -c "
-        PRAGMA threads=${task.cpus};
-        COPY (
-            SELECT rowid
-            FROM read_parquet('data_pool-partition_id_*.parquet')
-            USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE (${id.init_rep})
-        ) TO 'idx.csv' (FORMAT CSV);
-    "
+    if ( batch_size > 0) {
+        """
+        duckdb -c "
+            PRAGMA threads=${task.cpus};
+            COPY (
+                SELECT rowid
+                FROM read_parquet('data_pool-partition_id_*.parquet')
+                USING SAMPLE reservoir(${batch_size} ROWS) REPEATABLE (${id.init_rep})
+            ) TO 'idx.csv' (FORMAT CSV);
+        "
 
-    cat "idx.csv" | grep -v '^rowid\$' > "idx_all.csv"
+        cat "idx.csv" | grep -v '^rowid\$' > "idx_all.csv"
 
-    """
+        """
+    }
+    else {
+        """
+        duckdb -c "
+            PRAGMA threads=${task.cpus};
+            COPY (
+                SELECT rowid
+                FROM read_parquet('data_pool-partition_id_*.parquet')
+            ) TO 'idx.csv' (FORMAT CSV);
+        "
+
+        cat "idx.csv" | grep -v '^rowid\$' > "idx_all.csv"
+
+        """
+    }
 
 }
 
 process GetBestObserved {
+
+    tag "${id}:${xy.target}"
 
     input:
     tuple val( id ), path( idx ), path( pool )
@@ -56,12 +74,12 @@ process GetBestObserved {
 
 
 // [id, split_rep, init_rep], [structure, target], acq, [prediction,...], idx
-process Acquire {
+process AcquisitionRequest {
 
     tag "${id}:${acq}:b${batch_size}"
     cpus 1
 
-    publishDir "${params.outputs}", mode: 'copy'
+    publishDir "${params.outputs}/request", mode: 'copy'
 
     input:
     tuple val( id ), path( pool, stageAs: 'predicted/pseudopartition_*.parquet' ), path( idx ), val( best )
@@ -258,5 +276,33 @@ process Acquire {
         ${postrun}
         """
     }
+
+}
+
+process PublishRequest {
+
+    tag "${id}"
+    
+    publishDir "${params.outputs}/request", mode: 'copy'
+
+    // [id, split_rep, init_rep], [structure, target], acq, [pool, val, test], idx
+    input:
+    tuple val( id ), path( idx ), path( pool )
+
+    output:
+    tuple val( id ), path( "requested.csv" )
+
+    script:
+    """
+    duckdb -c "
+    PRAGMA threads=${task.cpus};
+        COPY (
+            SELECT * 
+            FROM read_parquet('data_pool-*.parquet') 
+            INNER JOIN read_csv('${idx}', header=false, names=['rowid']) USING (rowid)
+        ) TO 'requested.csv' (FORMAT CSV);
+    "
+
+    """
 
 }
