@@ -54,46 +54,52 @@ n_cycles=1
 while [ "$n_cycles" -le "$max_cycles" ]
 do
     cycle_dir="$init_dir/cycle_$n_cycles"
-    mkdir -p "$cycle_dir"
-    nextflow run "$script_dir"/.. \
-        --workflow cycle \
-        --pool "$splits_dir"/method_*/"fold_$split_rep/data_train.parquet" \
-        --val "$splits_dir"/method_*/"fold_$split_rep/data_validation.parquet" \
-        --test "$splits_dir"/method_*/"fold_$split_rep/data_test.parquet" \
-        --structure "$structure" \
-        --target "$target" \
-        --acquisition "$acq" "$inv_flag" \
-        --batch_size "$batch_size" \
-        --cycle "$n_cycles" \
-        --model "$model" \
-        --epochs "$epochs" \
-        --model_config "$model_config" \
-        --training_idx "$training_idx" \
-        --outputs "$cycle_dir" \
-        -resume \
-        -with-dag inner.html \
-        -work-dir "$(readlink -f "$splits_dir"/../../..)"/work \
-        -profile "$profile" #\
-        # -with-report "$cycle_dir/report_cycle-${n_cycles}.html"
+    if [ -f "$cycle_dir/.exitcode" ] && [ "$(cat "$cycle_dir/.exitcode")" -eq "0" ]
+    then
+        echo "Skipping cycle $n_cycles (already completed)"
+    else
+        echo "Running cycle $n_cycles"
+        mkdir -p "$cycle_dir"
+        nextflow run "$script_dir"/.. \
+            --workflow cycle \
+            --pool "$splits_dir"/method_*/"fold_$split_rep/data_train.parquet" \
+            --val "$splits_dir"/method_*/"fold_$split_rep/data_validation.parquet" \
+            --test "$splits_dir"/method_*/"fold_$split_rep/data_test.parquet" \
+            --structure "$structure" \
+            --target "$target" \
+            --acquisition "$acq" \
+            --batch_size "$batch_size" \
+            --cycle "$n_cycles" \
+            --model "$model" \
+            --epochs "$epochs" \
+            --model_config "$model_config" \
+            --training_idx "$training_idx" \
+            --outputs "$cycle_dir" \
+            -resume \
+            -with-dag inner.html \
+            -work-dir "$(readlink -f "$splits_dir"/../../..)"/work \
+            -profile "$profile"#\
+        echo "$?" > "$cycle_dir"/.exitcode
+            # -with-report "$cycle_dir/report_cycle-${n_cycles}.html"
 
-    # if [ "$n_cycles" -lt "$max_cycles" ] && [ "$n_cycles" -gt "3" ]
-    # then
-    #     # clean up models if not first or final cycle
-    #     old_cycle=$(( $n_cycles - 2 ))
-    #     old_cycle_dir="$init_dir/cycle_$old_cycle"
-    #     old_model="$old_cycle_dir/model.dv"
-    #     for bname in input-data.hf training-data.hf params.pt
-    #     do
-    #         filename="${old_model}/$bname"
-    #         if [ -f "$filename" ]
-    #         then
-    #             rm -r "$filename"
-    #         fi
-    #     done
-    # fi
-    # After each run, update the variables for the next iteration:
+        # if [ "$n_cycles" -lt "$max_cycles" ] && [ "$n_cycles" -gt "3" ]
+        # then
+        #     # clean up models if not first or final cycle
+        #     old_cycle=$(( $n_cycles - 2 ))
+        #     old_cycle_dir="$init_dir/cycle_$old_cycle"
+        #     old_model="$old_cycle_dir/model.dv"
+        #     for bname in input-data.hf training-data.hf params.pt
+        #     do
+        #         filename="${old_model}/$bname"
+        #         if [ -f "$filename" ]
+        #         then
+        #             rm -r "$filename"
+        #         fi
+        #     done
+        # fi
+    fi
+    # After each run, update the variables for the next iteration:    
     model="$cycle_dir/model.dv"
     training_idx="$cycle_dir/idx_all.csv"
-
     n_cycles=$(( $n_cycles + 1 ))
 done

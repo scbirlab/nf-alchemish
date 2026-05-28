@@ -17,7 +17,7 @@ github=${4:-"no"}
 
 outputs="$output_dir/outputs"
 
-MAX_PARALLEL=5  # prevent slurm swamping
+MAX_PARALLEL=25  # prevent slurm swamping
 SCRIPT_PATH="${BASH_SOURCE[0]}"
 
 run_with_limit() {
@@ -48,7 +48,7 @@ then
 
     for x in inner active
     do
-        echo "squeue -h --me -o "'"%i %j"'" | awk '\$2 ~ /^nf-$x/ {print \$1}' | xargs scancel" \
+        echo "squeue -h --me -o "'"%i %j"'" | awk '\$2 ~ /^nf-$x/ {split(\$1,a,\"_\"); print a[0]}' | xargs scancel" \
         >> interrupt.sh
     done
 else
@@ -119,6 +119,7 @@ then
     sbatch --array=0-$(( ${#job_scripts[@]} - 1 ))%$MAX_PARALLEL \
         --job-name=nf-inner \
         -o nf-inner-%a.log \
+        --time 7-0:00:00 \
         --wrap="bash \$(sed -n \"\$((SLURM_ARRAY_TASK_ID + 1))p\" ${job_list_abs})"
     for i in $(seq 0 $(( ${#job_scripts[@]} - 1 ))); do
         echo "$(pwd)/nf-inner-${i}.log"
