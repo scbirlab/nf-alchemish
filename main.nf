@@ -354,7 +354,7 @@ workflow active_learning {
     acquisiton_fn,
     batch_size,
     Channel.value( params.invert ),
-    Channel.value( params.ucb_beta ? params.ucb_beta : "placeholder" ),
+    Channel.value( [params.ucb_beta ? params.ucb_beta : "placeholder", params.ucb_scheduled, params.ucb_delta ] ),
     Channel.value( params.ei_jitter ? params.ei_jitter : "placeholder" ),
     Channel.value( params.pi_jitter ? params.pi_jitter : "placeholder" ),
     this_split_rep,

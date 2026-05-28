@@ -69,7 +69,7 @@ process Acquire {
     val acq
     val batch_size
     val invert
-    val beta
+    tuple val( beta ), val( scheduled ), val( delta )
     val ei_jitter
     val pi_jitter
     val split_rep
@@ -90,6 +90,9 @@ process Acquire {
     ]
     def col = colMap.get(acq, acq)
     def op = invert ? '*' : '/'
+    def beta_expr = scheduled
+        ? "sqrt(2.0 * ln((SELECT n FROM pool_size) * pow(${id} + 1.0, 2) * pow(pi(), 2) / (6.0 * ${delta})))"
+        : "${beta}"
 
     def pool_files = 'predicted/pseudopartition_*.parquet'
     def pseudorandom_macro = """
@@ -132,7 +135,13 @@ process Acquire {
         duckdb -c "
             PRAGMA threads=${task.cpus};
             COPY (
-                WITH remaining AS (
+                WITH 
+                pool_size AS (
+                    SELECT COUNT(*) AS n FROM read_parquet('${pool_files}')
+                    ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
+                    USING(rowid)
+                ),
+                remaining AS (
                     SELECT rowid
                     FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
@@ -140,7 +149,7 @@ process Acquire {
                 )
                 SELECT rowid
                 FROM remaining
-                ORDER BY prediction + ${beta} * sqrt(\\"prediction variance\\") DESC
+                ORDER BY prediction + ${beta_expr} * sqrt(\\"prediction variance\\") DESC
                 LIMIT ${batch_size}
             ) TO 'idx_new.csv' (FORMAT CSV);
         "
