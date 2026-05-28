@@ -7,7 +7,7 @@ process predict {
     // errorStrategy 'retry'  // sometimes GPU fails
     // maxRetries 3
 
-    publishDir "${params.outputs}", mode: 'copy', pattern: "prediction.{png,csv}"
+    publishDir "${params.outputs}", mode: 'copy', pattern: "*.{png,csv}"
 
     // [id, split_rep, init_rep], [structure, target], acq, [pool, val, test], idx, model, [start, stop]
     input:
@@ -17,16 +17,18 @@ process predict {
 
     // [id, split_rep, init_rep], [structure, target], acq, prediction
     output:
-    tuple val( id ), path( "predicted-*-*.parquet" ), emit: main
+    tuple val( id ), path( "predicted-*.parquet" ), emit: main
     tuple val( id ), path( model ), emit: model
+    tuple val( id ), path( "*.{png,csv}" ), emit: plots
 
     script:
     def acq_flag = ( acq == "doubtscore" ? "--doubtscore" : ( acq == "information sensitivity" ? "--information-sensitivity" : ""))
     """
-    XDG_HOME=cache DUVIDNN_CACHE=cache duvidnn predict \
-        --test "${pool}/rowid%*=${partition_idx}/data.parquet" \
+    XDG_HOME=cache DUVIDNN_CACHE=cache \
+    duvidnn predict \
+        --test "${pool}/partition_id=${partition_idx}/data.parquet" \
         -S "${xy.structure}" ${acq_flag} \
-        --extras rowid \
+        --extras rowid partition_id \
         --tanimoto \
         --variance \
         --optimality \
