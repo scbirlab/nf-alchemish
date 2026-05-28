@@ -89,6 +89,10 @@ process acquire {
 
         """
     }
+    else if ( acq == "ucb" ) {
+        """
+        """
+    }
     else {
         """
         duckdb -c "

@@ -121,6 +121,7 @@ workflow {
         test: params.test,
       ] ),
       Channel.value( params.k ),
+      Channel.value( params.n_partitions ),
       Channel.value( params.init_batch_size ),
       Channel.of( params.split_replicates ),
       Channel.of( 1..params.init_replicates ),
@@ -152,6 +153,7 @@ workflow {
       Channel.value( params.batch_size ),
       Channel.value( file( params.model_config, checkIfExists: true ) ),
       Channel.value( params.epochs ),
+      Channel.value( params.n_partitions ),
     )
 
   }
@@ -168,6 +170,7 @@ workflow init {
   sample_sheet
   split_fracs
   knn
+  n_partitions
   init_batch_size
   split_replicates
   init_replicates
@@ -208,6 +211,7 @@ workflow init {
     data_ch.remote,
     split_fracs,
     knn,
+    n_partitions,
   )  // id, split_method, [pool, val, test]
 
   split_data_local.out.data
@@ -275,6 +279,7 @@ workflow active_learning {
   batch_size
   model_config
   epochs
+  n_partitions
 
   main:
 
@@ -282,22 +287,22 @@ workflow active_learning {
     .map { it[0] }
     .set { pool_data }
 
-  get_chunk_indices(
-    iteration_state
-      .map { it[0] }
-      .combine( pool_data ),
-    Channel.value( 1000 ),
-  )  // cycle, start-stop.txt
+  // get_chunk_indices(
+  //   iteration_state
+  //     .map { it[0] }
+  //     .combine( pool_data ),
+  //   Channel.value( 1000 ),
+  // )  // cycle, start-stop.txt
 
-  get_chunk_indices.out
-    .splitCsv( elem: 1, header: false, sep: '\t' )
-    .set { chunks }  // cycle, [start, stop]
+  // get_chunk_indices.out
+  //   .splitCsv( elem: 1, header: false, sep: '\t' )
+  //   .set { chunks }  // cycle, [start, stop]
 
   predict(
     iteration_state
       .map { [ it[0], it[2] ] }
       .combine( pool_data )
-      .combine( chunks, by: 0 ),  // cycle, model, pool, [start, stop]
+      .combine( Channel.of( 0..<params.n_partitions ) ),  // cycle, model, pool, partition_idx
     xy,
     acquisiton_fn,
   )

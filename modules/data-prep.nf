@@ -13,10 +13,11 @@ process split_data_remote {
     tuple val( id ), val( dataset ), val( structure ), val( split_method ), val( split_rep )
     val split_p
     val knn
+    val n_partitions
 
     // id, split_rep, [pool, val, test]
     output:
-    tuple val( id ), val( split_method ), path( "fold_*/data_*.parquet" ), emit: data
+    tuple val( id ), val( split_method ), path( "fold_*/data_*.pqp" ), emit: data
     tuple val( id ), val( split_method ), path( "split-plot*.{png,csv}" ), emit: plot
 
     script:
@@ -40,16 +41,21 @@ process split_data_remote {
 
     for f in fold_*/data_train.parquet
     do
-        duckdb -c '
+        duckdb -c "
             PRAGMA threads=${task.cpus};
             COPY (
                 SELECT 
                     row_number() OVER () AS rowid, 
                     *
-                FROM read_parquet("'"\$f"'")
-            ) TO "data_train-indexed.parquet" (FORMAT Parquet);
-        '
-        rm "\$f" && mv "data_train-indexed.parquet" "\$f"
+                FROM read_parquet('\${f}')
+            ) TO 'data_train-partitioned/' 
+            (
+                FORMAT Parquet,
+                PARTITION_BY (rowid % ${n_partitions}),
+                OVERWRITE_OR_IGNORE
+            );
+        "
+        rm "\$f" && mv "data_train-partitioned" "\$(dirname "\$f")"/"\$(basename "\$f" .parquet)".pqp
     done
 
     rm -rf cache

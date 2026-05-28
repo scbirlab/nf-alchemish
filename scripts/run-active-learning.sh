@@ -48,7 +48,7 @@ then
 
     for x in inner active
     do
-        echo "squeue -h --me -o "'"%i %j"'" | awk '\$2 ~ /^nf-$x/ {split(\$1,a,\"_\"); print a[0]}' | xargs scancel" \
+        echo "squeue -h --me -o "'"%i %j"'" | awk '\$2 ~ /^nf-$x/ {split(\$1,a,\"_\"); print a[1]}' | xargs scancel" \
         >> interrupt.sh
     done
 else

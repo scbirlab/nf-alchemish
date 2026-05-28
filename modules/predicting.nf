@@ -11,7 +11,7 @@ process predict {
 
     // [id, split_rep, init_rep], [structure, target], acq, [pool, val, test], idx, model, [start, stop]
     input:
-    tuple val( id ), path( model ), path( pool ), val( start_stop )
+    tuple val( id ), path( model ), path( pool ), val( partition_idx )
     val xy
     val acq
 
@@ -24,16 +24,14 @@ process predict {
     def acq_flag = ( acq == "doubtscore" ? "--doubtscore" : ( acq == "information sensitivity" ? "--information-sensitivity" : ""))
     """
     XDG_HOME=cache DUVIDNN_CACHE=cache duvidnn predict \
-        --test "${pool}" \
+        --test "${pool}/rowid%*=${partition_idx}/data.parquet" \
         -S "${xy.structure}" ${acq_flag} \
         --extras rowid \
-        --start "${start_stop[0]}" \
-        --end "${start_stop[1]}" \
         --tanimoto \
         --variance \
         --optimality \
         --checkpoint "${model}" \
-        --output "predicted-${start_stop.join('-')}.parquet" \
+        --output "predicted-${partition_idx}.parquet" \
         --cache cache
 
     rm -rf cache
