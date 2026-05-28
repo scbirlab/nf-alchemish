@@ -85,7 +85,8 @@ log.info pipeline_title + """\
 
 include { 
   take_first_batch;
-  acquire; 
+  GetBestObserved;
+  Acquire; 
 } from './modules/batches.nf'
 include { 
   split_data_remote;
@@ -313,13 +314,23 @@ workflow active_learning {
   // predict.out.model
   //   .groupTuple( by: 0 )  // cycle, [model,...]
   //   | CleanUpModelFiles
+
+  GetBestObserved(
+    iteration_state
+      .map { v -> [ v[0], v[1] ] }
+      .combine( pool_data ),  // cycle, idx, pool
+    xy,
+  )
                   
-  acquire(
-    predictions.combine( iteration_state.map { it[0..1] }, by: 0 ),  // cycle [prediction,...], idx
+  Acquire(
+    predictions
+      .combine( iteration_state.map { v -> v[0..1] }, by: 0 )
+      .combine( GetBestObserved.out, by: 0 ),  // cycle, [prediction,...], idx
     xy,
     acquisiton_fn,
     batch_size,
-    Channel.value( params.invert )
+    Channel.value( params.invert ),
+    Channel.value( params.ucb_beta ? params.ucb_beta : "placeholder" ),
   )  // cycle, new_idx
 
   train(
