@@ -209,6 +209,7 @@ workflow init {
       .map { [ it[0], file( it[1], checkIfExists: true ) ] + it[2..-1] },
     split_fracs,
     knn,
+    n_partitions,
   )  // id, split_method, [pool, val, test]
   split_data_remote( 
     data_ch.remote,
@@ -340,13 +341,13 @@ workflow active_learning {
   )  // cycle, new_idx
 
   train(
-    acquire.out.all_idx.combine( data_splits ), 
+    Acquire.out.all_idx.combine( data_splits ), 
     xy,
     model_config,
     epochs,
   )  // cycle, model
 
-  acquire.out.all_idx
+  Acquire.out.all_idx
     .combine( train.out.checkpoint, by: 0 )  // cycle, idx, model
     .set { new_state }
 

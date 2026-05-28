@@ -34,7 +34,6 @@ process take_first_batch {
 
 }
 
-
 process GetBestObserved {
 
     input:
