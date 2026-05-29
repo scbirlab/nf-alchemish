@@ -123,7 +123,8 @@ then
         -o nf-inner-%a.log \
         --time 7-0:00:00 \
         --wrap="bash \$(sed -n \"\$((SLURM_ARRAY_TASK_ID + 1))p\" ${job_list_abs})"
-    for i in $(seq 0 $(( ${#job_scripts[@]} - 1 ))); do
+    for i in $(seq 0 $(( ${#job_scripts[@]} - 1 )))
+    do
         echo "$(pwd)/nf-inner-${i}.log"
     done > logfiles.txt
 else
@@ -138,3 +139,12 @@ else
     wait  # block until all finish
 fi
 echo 'tail -f $(cat "logfiles.txt")' > "log-follow.sh"
+bash log-follow.sh \
+| python -c "
+import sys, signal
+signal.signal(signal.SIGALRM, lambda s,f: sys.exit(1))
+for line in sys.stdin:
+    signal.alarm(2. * 60. * 60.)
+    sys.stdout.write(line)
+    sys.stdout.flush()
+"

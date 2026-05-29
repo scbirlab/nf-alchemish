@@ -124,7 +124,7 @@ process AcquisitionRequest {
     """
     def pseudorandom_seed = "${acq}_${id}_${split_rep}_${sample_rep}"
     def postrun = """
-    grep -v '^rowid\$' idx_new.csv > idx_new0.csv && mv idx_new0.csv idx_new.csv
+    grep -v '^rowid' idx_new.csv | cut -f1 -d, > idx_new0.csv && mv idx_new0.csv idx_new.csv
     cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
     mv idx_all0.csv idx_all.csv
     """

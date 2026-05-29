@@ -103,6 +103,6 @@ do
     fi
     # After each run, update the variables for the next iteration:    
     model="$cycle_dir/model.dv"
-    training_idx="$cycle_dir/idx_all.csv"
+    training_idx="$cycle_dir/request/idx_all.csv"
     n_cycles=$(( $n_cycles + 1 ))
 done
