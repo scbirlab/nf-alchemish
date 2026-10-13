@@ -8,6 +8,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --output=nf-alchemish.log
 
+MAX_PARALLEL=10  # prevent slurm swamping
 set -exuo pipefail
 
 max_cycles=${1:-10}
@@ -17,23 +18,42 @@ github=${4:-"no"}
 
 outputs="$output_dir/outputs"
 
-SCRIPT_PATH="${BASH_SOURCE[0]}"
 
+run_with_limit() {
+    local script="$1" 
+    local logfile="$2"
+    while [ "$(jobs -rp | wc -l)" -ge "$MAX_PARALLEL" ] 
+    do 
+        sleep 5
+    done
+    bash "$script" > "$logfile" 2>&1 &
+}
+
+SCRIPT_PATH="${BASH_SOURCE[0]}"
 # resolve symlinks
 while [ -h "$SCRIPT_PATH" ]; do
   DIR="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
   SCRIPT_PATH="$( readlink "$SCRIPT_PATH" )"
   [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$DIR/$SCRIPT_PATH"
 done
-
 # absolute directory
 script_dir="$( cd -P "$( dirname "$SCRIPT_PATH" )" >/dev/null 2>&1 && pwd )"
+script_dir="$(readlink -f "$script_dir")"
+
 if [ "$slurm" == "slurm" ]
 then
-    inner_runner="sbatch -o nf-alchemish-inner.log"
     profile=standard
+    if [ -f "interrupt.sh" ]
+    then
+        rm "interrupt.sh"
+    fi
+
+    for x in inner active
+    do
+        echo "squeue -h --me -o "'"%i %j"'" | awk '\$2 ~ /^nf-$x/ {split(\$1,a,\"_\"); print a[1]}' | xargs scancel" \
+        >> interrupt.sh
+    done
 else
-    inner_runner="bash"
     if [ "$github" == "gh" ]
     then
         profile=gh
@@ -43,41 +63,88 @@ else
     fi
 fi
 
+echo 'find ~/.cache/duvidnn/0.0.1/parquet -mindepth 1 -maxdepth 1 -type d -mmin +120 -exec rm -rf {} +' \
+> clean-cache.sh
+
 nextflow run "$script_dir"/.. \
     --workflow init \
     --outputs "$outputs" \
     -profile "$profile" \
+    -with-dag init.html \
     -resume
 
 n_cycles=1
 output_dirs=( "$outputs"/*/ )
 start_dir=$(pwd)
+if [ -f "logfiles.txt" ]
+then
+    mv "logfiles.txt" "logfiles_old.txt"
+fi
+
+job_scripts=()
 for id in "${output_dirs[@]}"
 do  
     echo "id = $id"
-    for split in "$id"/split-*/
+    for split in "$id"runs/method_*/
     do  
         echo "split = $split"
-        for sample in "$split"/sample-*/
+        for sample in "$split"fold_*/sample_*/
         do  
             echo "sample = $sample"
-            for acq in "$sample"/*/
+            for acq in "$sample"*/
             do
-                if [[ $(basename "$acq") != "cycle-"* ]]
+                if [ "$(basename "$acq")" != "cycle_0" ]
                 then
                     echo "acq = $acq"
-                    if [ ! -e "$acq"/work ]
-                    then
-                        mkdir -p "$acq"/work
-                    fi
-                    ln -sf "$(readlink -f "$start_dir"/work/conda)" "$acq"/work/conda
-                    cd "$acq"
-                    $inner_runner \
-                        "$script_dir"/run-inner-cycle.sh \
-                        "." "$max_cycles" "$profile" "$script_dir"
-                    cd "$start_dir"
+                    acq="$(readlink -f "$acq")"
+                    cat > "$acq/run.sh" <<EOF
+#!/usr/bin/env bash
+bash "${script_dir}/run-inner-cycle.sh" "${acq}" "${max_cycles}" "${profile}" "${script_dir}"
+EOF
+
+                    job_scripts+=( "$acq/run.sh" )
                 fi
                 done
         done
     done
 done
+
+if [ "${#job_scripts[@]}" -eq 0 ]; then
+    echo "No inner cycle jobs to submit."
+    exit 0
+fi
+
+printf '%s\n' "${job_scripts[@]}" > job_list.txt
+job_list_abs="$(readlink -f job_list.txt)"
+if [ "$slurm" == "slurm" ]
+then
+    sbatch --array=0-$(( ${#job_scripts[@]} - 1 ))%$MAX_PARALLEL \
+        --job-name=nf-inner \
+        -o nf-inner-%a.log \
+        --time 7-0:00:00 \
+        --wrap="bash \$(sed -n \"\$((SLURM_ARRAY_TASK_ID + 1))p\" ${job_list_abs})"
+    for i in $(seq 0 $(( ${#job_scripts[@]} - 1 )))
+    do
+        echo "$(pwd)/nf-inner-${i}.log"
+    done > logfiles.txt
+else
+    local_idx=0
+    for j in "${job_scripts[@]}"
+    do
+        logfile="$(pwd)/nf-inner-${local_idx}.log"
+        run_with_limit "$j" "$logfile"
+        echo "$logfile" >> logfiles.txt
+        local_idx=$(( local_idx + 1 ))
+    done
+    wait  # block until all finish
+fi
+echo 'tail -f $(cat "logfiles.txt")' > "log-follow.sh"
+bash log-follow.sh \
+| python -c "
+import sys, signal
+signal.signal(signal.SIGALRM, lambda s,f: sys.exit(1))
+for line in sys.stdin:
+    signal.alarm(2. * 60. * 60.)
+    sys.stdout.write(line)
+    sys.stdout.flush()
+"
