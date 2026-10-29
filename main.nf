@@ -60,6 +60,7 @@ log.info pipeline_title + """\
     split reps     : ${params.split_replicates}
     init. reps     : ${params.init_replicates}
     acquisition    : ${params.acquisition}
+    invert acq.    : ${params.invert}
   data
     structure      : ${params.structure}
     target         : ${params.target}
@@ -84,11 +85,16 @@ log.info pipeline_title + """\
 
 include { 
   take_first_batch;
-  acquire; 
+  AcquisitionRequest;
+  GetBestObserved;
+  PublishRequest;
 } from './modules/batches.nf'
 include { 
-  split_data_local;
+  GenerateRequestedLabels;
+} from './modules/label.nf'
+include { 
   split_data_remote;
+  split_data_remote as split_data_local;
 } from './modules/data-prep.nf'
 include { 
   get_chunk_indices; 
@@ -97,7 +103,8 @@ include {
   write_init_info; 
 } from './modules/info.nf'
 include { 
-  predict; 
+  predict;
+  CleanUpModelFiles;
 } from './modules/predicting.nf'
 include { 
   train; 
@@ -118,8 +125,10 @@ workflow {
         val: params.validation, 
         test: params.test,
       ] ),
+      Channel.value( params.k ),
+      Channel.value( params.n_partitions ),
       Channel.value( params.init_batch_size ),
-      Channel.of( 1..params.split_replicates ),
+      Channel.of( params.split_replicates ),
       Channel.of( 1..params.init_replicates ),
       Channel.fromList( params.acquisitions ),
       Channel.value( file( params.model_config, checkIfExists: true ) ),
@@ -133,13 +142,13 @@ workflow {
     active_learning(
       Channel.of( [ 
         params.cycle, 
-        file( params.training_idx, checkIfExists: true  ), 
+        file( params.training_idx, checkIfExists: true ), 
         file( params.model, checkIfExists: true ) 
       ] ),
       Channel.of( [ 
-        file( params.pool, checkIfExists: true ), 
-        file( params.val, checkIfExists: true ), 
-        file( params.test, checkIfExists: true ) 
+        pool: file( params.pool, checkIfExists: true ), 
+        val: file( params.val, checkIfExists: true ), 
+        test: file( params.test, checkIfExists: true ) 
       ] ),
       Channel.value( [
         structure: params.structure, 
@@ -149,6 +158,9 @@ workflow {
       Channel.value( params.batch_size ),
       Channel.value( file( params.model_config, checkIfExists: true ) ),
       Channel.value( params.epochs ),
+      Channel.value( params.n_partitions ),
+      Channel.value( params.this_split_rep ),
+      Channel.value( params.this_sample_rep ),
     )
 
   }
@@ -164,6 +176,8 @@ workflow init {
   take:
   sample_sheet
   split_fracs
+  knn
+  n_partitions
   init_batch_size
   split_replicates
   init_replicates
@@ -188,29 +202,62 @@ workflow init {
     .map { it[0..-2] }  // id, dataset, structure, split method
     .combine( split_replicates )
     .branch { v ->
-      remote: (v[1].startsWith("hf:") || v[1].startsWith("https:"))
+      remote: (v[1].startsWith("hf://") || v[1].startsWith("https://"))
       local: true
     }
     .set { data_ch }  // id, dataset, structure, split method, split_rep
 
   // Workflow
   split_data_local( 
-    data_ch.local.map { [ it[0], file(it[1], checkIfExists: true) ] + it[2..-1] },
+    data_ch.local
+      .map { [ it[0], file( it[1], checkIfExists: true ) ] + it[2..-1] },
     split_fracs,
-  )  // id, split_rep, [pool, val, test]
+    knn,
+    n_partitions,
+    Channel.value( params.skip_plot ),
+  )  // id, split_method, [pool, val, test]
   split_data_remote( 
     data_ch.remote,
     split_fracs,
-  )  // id, split_rep, [pool, val, test]
+    knn,
+    n_partitions,
+    Channel.value( params.skip_plot ),
+  )  // test_val -> id, split_method, [test, val] // pool -> id, split_method, pool
 
-  split_data_local.out.data
-    .concat( split_data_remote.out.data )
-    .combine( init_replicates )  // id, split_rep, [pool, val, test], init_rep
-    .map { [ [id: it[0], split_rep: it[1], init_rep: it[3]], [pool: it[2][1], validation: it[2][2], test: it[2][0] ] ] }
-    .set { split_data_out }  // [id, split_rep, init_rep], [pool, val, test]
+  split_data_local.out.pool
+    .concat( split_data_remote.out.pool )
+    .transpose()
+    .map { v -> [ v[0], v[1], v[2].parent.name.split("_")[-1], v[2] ] }
+    .groupTuple( by: [0, 1, 2] )   // [id, split_method, fold, [all partition files]]
+    .set { pool_by_fold }
+
+  split_data_local.out.test_val
+    .concat( split_data_remote.out.test_val )
+    .transpose()
+    .map { v -> [ v[0], v[1], v[2].parent.name.split("_")[-1], v[2] ] }
+    .groupTuple( by: [0, 1, 2] )   // [id, split_method, fold, [val, test]]
+    .set { tv_by_fold }
+
+  pool_by_fold
+    .combine( tv_by_fold, by: [0, 1, 2] )
+    .map { v -> [
+        [id: v[0], split_rep: v[2], split_method: v[1]],
+        [
+          pool: v[3],
+          validation: v[4].find { it.name.contains("validation") },
+          test: v[4].find { it.name.contains("test") }]
+        ] 
+    }
+    .combine( init_replicates )
+    .map { v -> [ 
+      v[0] + [init_rep: v[-1]], 
+      v[1],
+    ] }
+    .set { split_data_out }
   
   take_first_batch(
-    split_data_out.map { [ it[0], it[1].pool ] },
+    split_data_out
+      .map { v -> [ v[0], v[1].pool ] },
     init_batch_size,
   )  // [id, split_rep, init_rep], labelled_idx
   
@@ -221,14 +268,15 @@ workflow init {
     )      // [id, split_rep, init_rep], [pool, val, test], labelled_idx
     .map { [ it[0].id ] + it }
     .combine(
-      csv_rows.map { tuple( it[0], [structure: it[2], target: it[4]] ) },
-      by: 0
+      csv_rows
+        .map { tuple( it[0], [structure: it[2], target: it[4]] ) },
+      by: 0,
     )  // [id, split_rep, init_rep], [pool, val, test], labelled_idx, [structure, target]
     .map { [ it[1], it[-1] ] + it[2..-2]  }  // [id, split_rep, init_rep], [structure, target], [pool, val, test], labelled_idx
     .set { init_data }
 
   train_initial_model(
-    init_data.map { it[0..1] + [ [it[2].pool, it[2].validation, it[2].test ],  it[3]] },
+    init_data.map { [ it[0], it[-1], it[2].pool, it[2].validation, it[2].test, it[1] ] },
     model_config,
     epochs,
   )  // [id, split_rep, init_rep], init_model
@@ -241,7 +289,11 @@ workflow init {
     .combine( train_initial_model.out.checkpoint, by: [0,1] )  // [id, split_rep, init_rep], [structure, target], acq, [pool, val, test], labelled_idx, init_model
     .set { initial_model }
 
-  init_info.combine( model_config ).combine( epochs ) | write_init_info
+  init_info
+    .combine( model_config )
+    .combine( epochs )
+    .combine( Channel.value( params.batch_size ) ) 
+    | write_init_info
 
   emit:
   initial_model
@@ -258,43 +310,87 @@ workflow active_learning {
   batch_size
   model_config
   epochs
+  n_partitions
+  this_split_rep
+  this_sample_rep
 
   main:
 
-  data_splits.map { it[0] }.set { pool_data }
+  data_splits
+    .map { v -> v.pool }
+    .set { pool_data }
 
-  get_chunk_indices(
-    iteration_state.map { it[0] }.combine( pool_data ),
-    Channel.value( 1000 ),
-  )  // cycle, start-stop.txt
+  // get_chunk_indices(
+  //   iteration_state
+  //     .map { it[0] }
+  //     .combine( pool_data ),
+  //   Channel.value( 1000 ),
+  // )  // cycle, start-stop.txt
 
-  get_chunk_indices.out
-    .splitCsv( elem: 1, header: false, sep: '\t' )
-    .set { chunks }  // cycle, [start, stop]
+  // get_chunk_indices.out
+  //   .splitCsv( elem: 1, header: false, sep: '\t' )
+  //   .set { chunks }  // cycle, [start, stop]
 
   predict(
-    iteration_state.map { [ it[0], it[2] ] }.combine( pool_data ).combine( chunks, by: 0 ),  // cycle, model, pool, [start, stop]
+    iteration_state
+      .map { v -> [ v[0], v[2] ] }
+      .combine( pool_data.flatten() ),  // cycle, model, pool_partition
     xy,
     acquisiton_fn,
   )
-    | groupTuple( by: 0 )  // cycle, [prediction,...]
-    | set { predictions }
+  predict.out.main
+    .groupTuple( by: 0 )  // cycle, [prediction,...]
+    .set { predictions }
+
+  // predict.out.model
+  //   .groupTuple( by: 0 )  // cycle, [model,...]
+  //   | CleanUpModelFiles
+
+  GetBestObserved(
+    iteration_state
+      .map { v -> v[0..1] }
+      .combine( pool_data.map { v -> [v] } ),  // cycle, idx, pool
+    xy,
+  )
                   
-  acquire(
-    predictions.combine( iteration_state.map { it[0..1] }, by: 0 ),  // cycle [prediction,...], idx
+  AcquisitionRequest(
+    predictions
+      .combine( iteration_state.map { v -> v[0..1] }, by: 0 )
+      .combine( GetBestObserved.out.val, by: 0 ),  // cycle, [prediction,...], idx, best
+    xy,
     acquisiton_fn,
     batch_size,
-    Channel.value( params.invert )
+    Channel.value( params.invert ),
+    Channel.value( [(params.ucb_beta ? params.ucb_beta : "placeholder"), params.ucb_scheduled, params.ucb_delta ] ),
+    Channel.value( params.ei_jitter ? params.ei_jitter : "placeholder" ),
+    Channel.value( params.pi_jitter ? params.pi_jitter : "placeholder" ),
+    this_split_rep,
+    this_sample_rep,
   )  // cycle, new_idx
 
+  PublishRequest(
+    AcquisitionRequest.out.new_idx
+      .combine( pool_data.map { v -> [v] } )
+  )
+
+  GenerateRequestedLabels(
+    PublishRequest.out,
+    Channel.value( params.mode ),
+    Channel.value( params.script ? file( params.script, checkIfExists: true ) : file( "placeholder" ) ),
+  )
+  // TODO: Accumulate all requested labels and feed to train
   train(
-    acquire.out.all_idx.combine( data_splits ), 
+    AcquisitionRequest.out.all_idx
+      .combine( 
+        data_splits
+        .map { v -> [ v.pool, v.val, v.test ] },
+      ),  // cycle, idx, [prediction,...]
     xy,
     model_config,
     epochs,
   )  // cycle, model
 
-  acquire.out.all_idx
+  AcquisitionRequest.out.all_idx
     .combine( train.out.checkpoint, by: 0 )  // cycle, idx, model
     .set { new_state }
 
