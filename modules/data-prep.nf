@@ -1,7 +1,6 @@
 process split_data_remote {
 
     tag "${id}.${split_rep}:${split_method}"
-    memory "128G"
     label "big_time"
 
     publishDir(
