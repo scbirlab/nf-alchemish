@@ -1,6 +1,8 @@
 process split_data_remote {
 
     tag "${id}.${split_rep}:${split_method}"
+    memory "128G"
+    label "big_time"
 
     publishDir(
         "${params.outputs}/${id}", 
@@ -22,12 +24,13 @@ process split_data_remote {
     val split_p
     val knn
     val n_partitions
+    val skip_plot
 
     // id, split_rep, [pool, val, test]
     output:
     tuple val( id ), val( split_method ), path( "fold_*/data_{test,validation}*.parquet", arity: "2..*" ), emit: test_val
     tuple val( id ), val( split_method ), path( "fold_*/data_pool-partition_id_*.parquet", arity: "1..*" ), emit: pool
-    tuple val( id ), val( split_method ), path( "split-plot*.{png,csv}" ), emit: plot
+    tuple val( id ), val( split_method ), path( "split-plot*.{png,csv}" ), emit: plot, optional: true
 
     script:
     """
@@ -46,7 +49,7 @@ process split_data_remote {
         --cache cache \
         --output data.parquet \
         --plot-seed 0 \
-        --plot split-plot.png
+        ${skip_plot ? "" : "--plot split-plot.png"}
 
     for f in fold_*/data_train.parquet
     do
@@ -96,6 +99,7 @@ process split_data_remote {
 process split_data_local {
 
     tag "${id}.${split_rep}:${split_method}"
+    label "big_time"
 
     publishDir(
         "${params.outputs}", 

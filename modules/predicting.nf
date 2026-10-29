@@ -3,6 +3,7 @@ process predict {
 
     tag "${id}:${xy.target}:${acq}"
     label "array_job"
+    label "predict"
     // label "gpu_single"
 
     // errorStrategy 'retry'  // sometimes GPU fails
@@ -69,7 +70,7 @@ process CleanUpModelFiles {
         for bname in input-data.hf training-data.hf params.pt
         do
             filename="\$m/\$bname"
-            if [ -f "\$filename" ]
+            if [ -e "\$filename" ]
             then
                 rm -r "\$filename"
             fi

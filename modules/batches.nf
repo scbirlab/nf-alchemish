@@ -54,21 +54,28 @@ process GetBestObserved {
 
     tag "${id}:${xy.target}"
 
+    publishDir "${params.outputs}/request", mode: 'copy', pattern: "*.csv"
+
     input:
     tuple val( id ), path( idx ), path( pool )
     val xy
 
     output:
-    tuple val( id ), env( y_star )
+    tuple val( id ), env( y_star ), emit: val
+    tuple val( id ), path( 'best.csv' ), emit: csv
 
     script:
     """
-    y_star=\$(duckdb -c "
-        SELECT MAX(\\"${xy.target}\\")
-        FROM read_parquet('data_pool-partition_id_*.parquet')
-        INNER JOIN read_csv('${idx}', header=false, names=['rowid']) 
-            USING (rowid);
-    " | tail -n1)
+    duckdb -c "
+        PRAGMA threads=${task.cpus};
+        COPY (
+            SELECT MAX(\\"${xy.target}\\")
+            FROM read_parquet('data_pool-partition_id_*.parquet')
+            INNER JOIN read_csv('${idx}', header=false, names=['rowid']) 
+                USING (rowid)
+        ) TO 'best.csv' (FORMAT CSV);
+    " 
+    y_star=\$(tail -n1 best.csv)
     """
 }
 
@@ -76,7 +83,7 @@ process GetBestObserved {
 // [id, split_rep, init_rep], [structure, target], acq, [prediction,...], idx
 process AcquisitionRequest {
 
-    tag "${id}:${acq}:b${batch_size}"
+    tag "${id}:${acq}:b${batch_size}:best=${best}"
     cpus 1
 
     publishDir "${params.outputs}/request", mode: 'copy'
@@ -123,6 +130,17 @@ process AcquisitionRequest {
         );
     """
     def pseudorandom_seed = "${acq}_${id}_${split_rep}_${sample_rep}"
+    def erf_macro = """
+        CREATE OR REPLACE MACRO erf(x) AS (
+            SIGN(x) * (1.0 - (
+                0.254829592 * (1.0/(1.0+0.3275911*ABS(x)))
+            - 0.284496736 * POW(1.0/(1.0+0.3275911*ABS(x)), 2)
+            + 1.421413741 * POW(1.0/(1.0+0.3275911*ABS(x)), 3)
+            - 1.453152027 * POW(1.0/(1.0+0.3275911*ABS(x)), 4)
+            + 1.061405429 * POW(1.0/(1.0+0.3275911*ABS(x)), 5)
+            ) * EXP(-x*x))
+        );
+    """
     def postrun = """
     grep -v '^rowid' idx_new.csv | cut -f1 -d, > idx_new0.csv && mv idx_new0.csv idx_new.csv
     cat "${idx}" "idx_new.csv" | cut -f1 -d, | grep -v '^rowid\$' > "idx_all0.csv"
@@ -160,12 +178,12 @@ process AcquisitionRequest {
                     USING(rowid)
                 ),
                 remaining AS (
-                    SELECT rowid
+                    SELECT rowid, prediction, \\"prediction variance\\"
                     FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
-                SELECT rowid
+                SELECT rowid, prediction, \\"prediction variance\\"
                 FROM remaining
                 ORDER BY prediction + ${beta_expr} * sqrt(\\"prediction variance\\") DESC
                 LIMIT ${batch_size}
@@ -181,12 +199,12 @@ process AcquisitionRequest {
             ${pseudorandom_macro}
             COPY (
                 WITH remaining AS (
-                    SELECT rowid
+                    SELECT rowid, prediction, \\"prediction variance\\"
                     FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
-                SELECT rowid
+                SELECT rowid, prediction, \\"prediction variance\\"
                 FROM remaining
                 ORDER BY 
                     prediction + sqrt(\\"prediction variance\\") * 
@@ -202,19 +220,21 @@ process AcquisitionRequest {
         """
         duckdb -c "
             PRAGMA threads=${task.cpus};
+            ${erf_macro}
             COPY (
                 WITH remaining AS (
-                    SELECT rowid
+                    SELECT 
+                        rowid,
+                        prediction AS mu,
+                        sqrt(\\"prediction variance\\") AS sigma,
+                        (mu - ${best} - ${pi_jitter}) AS z
                     FROM read_parquet('${pool_files}') 
                     ANTI JOIN read_csv('${idx}', header=false, names=['rowid'])
                     USING(rowid)
                 )
                 SELECT rowid,
                     (
-                        1 + erf(
-                            (prediction - ${best} - ${pi_jitter}) 
-                            / (sqrt(\\"prediction variance\\") * sqrt(2))
-                        )
+                        1 + erf(z / (sigma * sqrt(2)))
                     ) / 2 AS pi_score
                 FROM remaining
                 ORDER BY pi_score DESC
@@ -228,6 +248,7 @@ process AcquisitionRequest {
         """
         duckdb -c "
             PRAGMA threads=${task.cpus};
+            ${erf_macro}
             COPY (
                 WITH remaining AS (
                     SELECT 
@@ -242,8 +263,8 @@ process AcquisitionRequest {
                 SELECT rowid,
                     CASE WHEN sigma > 0 THEN
                         sigma * (
-                            z * 0.5 * (1 + erf(z / sqrt(2))) +
-                            exp(-0.5 * z * z) / sqrt(2 * pi())
+                            (z * (1 + erf(z / sqrt(2))) / 2) +
+                            exp(-z * z / 2) / sqrt(2 * pi())
                         )
                         ELSE 0 END AS ei
                 FROM remaining

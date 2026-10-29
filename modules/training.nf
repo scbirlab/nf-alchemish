@@ -3,6 +3,7 @@ process train_initial_model {
 
     tag "${id}:${xy.target}"
     // label "gpu_single"
+    label "train"
 
     // errorStrategy 'retry'  // sometimes GPU fails
     // maxRetries 3
@@ -47,6 +48,7 @@ process train_initial_model {
         -c "${model_config}" \
         --early-stopping 10 \
         --output "model.dv" \
+        --save-data \
         --cache cache \
         --epochs "${epochs}"
 
@@ -61,9 +63,9 @@ process train {
 
     tag "${id}:${xy.target}"
     // label "gpu_single"
-    label "big_time"
+    label "train"
 
-    // errorStrategy 'retry'  // sometimes GPU fails
+    errorStrategy 'retry'  // sometimes GPU fails
     maxRetries 1
 
     publishDir(
@@ -110,6 +112,7 @@ process train {
         -c "${model_config}" \
         --early-stopping 10 \
         --output "model.dv" \
+        --save-data \
         --cache cache \
         --epochs "${epochs}"
 

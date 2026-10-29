@@ -214,12 +214,14 @@ workflow init {
     split_fracs,
     knn,
     n_partitions,
+    Channel.value( params.skip_plot ),
   )  // id, split_method, [pool, val, test]
   split_data_remote( 
     data_ch.remote,
     split_fracs,
     knn,
     n_partitions,
+    Channel.value( params.skip_plot ),
   )  // test_val -> id, split_method, [test, val] // pool -> id, split_method, pool
 
   split_data_local.out.pool
@@ -354,7 +356,7 @@ workflow active_learning {
   AcquisitionRequest(
     predictions
       .combine( iteration_state.map { v -> v[0..1] }, by: 0 )
-      .combine( GetBestObserved.out, by: 0 ),  // cycle, [prediction,...], idx, best
+      .combine( GetBestObserved.out.val, by: 0 ),  // cycle, [prediction,...], idx, best
     xy,
     acquisiton_fn,
     batch_size,

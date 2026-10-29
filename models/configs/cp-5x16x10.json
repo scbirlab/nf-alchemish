@@ -5,6 +5,7 @@
     "learning_rate": 1e-05,
     "n_hidden": 5,
     "n_units": 16,
+    "residual_depth": 2,
     "use_2d": true,
     "use_fp": true
 }

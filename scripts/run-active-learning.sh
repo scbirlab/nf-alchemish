@@ -8,7 +8,7 @@
 #SBATCH --mail-type=ALL
 #SBATCH --output=nf-alchemish.log
 
-MAX_PARALLEL=10  # prevent slurm swamping
+MAX_PARALLEL=6  # prevent slurm swamping
 set -exuo pipefail
 
 max_cycles=${1:-10}
@@ -143,8 +143,9 @@ bash log-follow.sh \
 | python -c "
 import sys, signal
 signal.signal(signal.SIGALRM, lambda s,f: sys.exit(1))
+signal.alarm(int(2. * 60. * 60.))
 for line in sys.stdin:
-    signal.alarm(2. * 60. * 60.)
+    signal.alarm(int(2. * 60. * 60.))
     sys.stdout.write(line)
     sys.stdout.flush()
 "

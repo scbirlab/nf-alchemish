@@ -80,6 +80,7 @@ do
             --outputs "$cycle_dir" \
             -resume \
             -with-dag inner.html \
+            -c "$(readlink -f "$splits_dir"/../../..)"/nextflow.config \
             -work-dir "$(readlink -f "$splits_dir"/../../..)"/work \
             -profile "$profile" #\
         echo "$?" > "$cycle_dir"/.exitcode
